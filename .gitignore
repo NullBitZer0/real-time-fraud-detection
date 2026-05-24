@@ -23,3 +23,5 @@ data/processed/
 *.parquet
 
 dvc.lock
+
+test.py
