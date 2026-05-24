@@ -17,6 +17,7 @@ models/
 data/raw/
 data/processed/
 notebooks/catboost_info
+fraud_detection.egg-info/
 
 .env
 
@@ -26,3 +27,7 @@ notebooks/catboost_info
 dvc.lock
 
 test.py
+test_validation.py
+tessst_ingestion.py
+test_preprocessing.py
+test_feature_engineering.py
