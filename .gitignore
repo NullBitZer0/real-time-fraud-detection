@@ -16,6 +16,7 @@ models/
 
 data/raw/
 data/processed/
+notebooks/catboost_info
 
 .env
 
