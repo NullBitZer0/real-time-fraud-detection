@@ -1,0 +1,22 @@
+pandas 
+numpy 
+polars 
+pyarrow 
+scikit-learn 
+matplotlib 
+seaborn
+xgboost 
+lightgbm 
+catboost 
+optuna 
+mlflow 
+hydra-core 
+dvc 
+dagshub 
+fastapi 
+uvicorn
+evidently
+imbalanced-learn 
+jupyter notebook
+pyyaml 
+joblib
