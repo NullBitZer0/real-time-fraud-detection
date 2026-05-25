@@ -1,12 +1,13 @@
 import sys
 import joblib
-from xgboost import XGBClassifier
-from catboost import CatBoostClassifier
+
 import mlflow
 import mlflow.sklearn
 import dagshub
 
 from lightgbm import LGBMClassifier
+from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
 
 from sklearn.metrics import (
     roc_auc_score,
@@ -17,7 +18,6 @@ from src.utils.logger import logging
 from src.utils.exception import CustomException
 
 from src.mlflow_tracking import *
-
 
 
 class ModelTrainer:
@@ -35,7 +35,6 @@ class ModelTrainer:
                 "Model training started"
             )
 
-            # Split features and target
             X_train = train_df.drop(
                 "isFraud",
                 axis=1
@@ -50,7 +49,8 @@ class ModelTrainer:
 
             y_test = test_df["isFraud"]
 
-            # Model
+            # Model Selection
+
             if config.model.model_name == "lightgbm":
 
                 model = LGBMClassifier(
@@ -83,55 +83,34 @@ class ModelTrainer:
                     verbose=config.model.verbose
                 )
 
-            # MLflow tracking
-            with mlflow.start_run():
-
-                logging.info(
-                    "MLflow run started"
+            else:
+                raise Exception(
+                    f"Unsupported model: {config.model.model_name}"
                 )
 
-                # Log parameters
-                mlflow.log_param(
-                    "model",
+            logging.info(
+                f"Selected model: {config.model.model_name}"
+            )
+
+            # MLflow Autologging
+            mlflow.autolog()
+
+            with mlflow.start_run():
+
+                mlflow.set_tag(
+                    "model_type",
                     config.model.model_name
                 )
 
-                mlflow.log_param(
-                    "n_estimators",
-                    300
-                )
-
-                mlflow.log_param(
-                    "learning_rate",
-                    0.05
-                )
-
-                mlflow.log_param(
-                    "max_depth",
-                    10
-                )
-
-                mlflow.log_param(
-                    "num_leaves",
-                    64
-                )
-
-                # Train model
                 model.fit(
                     X_train,
                     y_train
                 )
 
-                logging.info(
-                    "Model training completed"
-                )
-
-                # Predictions
                 probs = model.predict_proba(
                     X_test
                 )[:, 1]
 
-                # Metrics
                 roc_auc = roc_auc_score(
                     y_test,
                     probs
@@ -142,6 +121,17 @@ class ModelTrainer:
                     probs
                 )
 
+                # Custom fraud metrics
+                mlflow.log_metric(
+                    "custom_roc_auc",
+                    roc_auc
+                )
+
+                mlflow.log_metric(
+                    "custom_pr_auc",
+                    pr_auc
+                )
+
                 logging.info(
                     f"ROC AUC: {roc_auc}"
                 )
@@ -150,35 +140,14 @@ class ModelTrainer:
                     f"PR AUC: {pr_auc}"
                 )
 
-                # Log metrics
-                mlflow.log_metric(
-                    "roc_auc",
-                    roc_auc
-                )
-
-                mlflow.log_metric(
-                    "pr_auc",
-                    pr_auc
-                )
-
-                # Log model
-                mlflow.sklearn.log_model(
-                    sk_model=model,
-                    artifact_path="lightgbm_model"
-                )
-
-                logging.info(
-                    "Model logged to MLflow"
-                )
-
-            # Save local model
+            # Save model locally
             joblib.dump(
                 model,
                 "models/model.pkl"
             )
 
             logging.info(
-                "Model saved locally"
+                "Model saved successfully"
             )
 
             return {
