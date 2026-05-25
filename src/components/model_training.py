@@ -1,6 +1,7 @@
 import sys
 import joblib
-
+from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
 import mlflow
 import mlflow.sklearn
 import dagshub
@@ -18,12 +19,14 @@ from src.utils.exception import CustomException
 from src.mlflow_tracking import *
 
 
+
 class ModelTrainer:
 
     def initiate_model_training(
         self,
         train_df,
-        test_df
+        test_df,
+        config
     ):
 
         try:
@@ -48,13 +51,37 @@ class ModelTrainer:
             y_test = test_df["isFraud"]
 
             # Model
-            model = LGBMClassifier(
-                n_estimators=300,
-                learning_rate=0.05,
-                max_depth=10,
-                num_leaves=64,
-                random_state=42
-            )
+            if config.model.model_name == "lightgbm":
+
+                model = LGBMClassifier(
+                    n_estimators=config.model.n_estimators,
+                    learning_rate=config.model.learning_rate,
+                    max_depth=config.model.max_depth,
+                    num_leaves=config.model.num_leaves,
+                    random_state=config.model.random_state
+                )
+
+            elif config.model.model_name == "xgboost":
+
+                model = XGBClassifier(
+                    n_estimators=config.model.n_estimators,
+                    learning_rate=config.model.learning_rate,
+                    max_depth=config.model.max_depth,
+                    subsample=config.model.subsample,
+                    colsample_bytree=config.model.colsample_bytree,
+                    eval_metric="logloss",
+                    random_state=config.model.random_state
+                )
+
+            elif config.model.model_name == "catboost":
+
+                model = CatBoostClassifier(
+                    iterations=config.model.iterations,
+                    learning_rate=config.model.learning_rate,
+                    depth=config.model.depth,
+                    random_seed=config.model.random_seed,
+                    verbose=config.model.verbose
+                )
 
             # MLflow tracking
             with mlflow.start_run():
@@ -66,7 +93,7 @@ class ModelTrainer:
                 # Log parameters
                 mlflow.log_param(
                     "model",
-                    "LightGBM"
+                    config.model.model_name
                 )
 
                 mlflow.log_param(
