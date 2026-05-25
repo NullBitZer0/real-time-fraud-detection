@@ -7,8 +7,8 @@ import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import LabelEncoder
 
-from src.logger import logging
-from src.exception import CustomException
+from src.utils.logger import logging
+from src.utils.exception import CustomException
 
 
 class DataPreprocessing:

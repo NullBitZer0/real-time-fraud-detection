@@ -8,8 +8,8 @@ from sklearn.metrics import (
     average_precision_score
 )
 
-from src.logger import logging
-from src.exception import CustomException
+from src.utils.logger import logging
+from src.utils.exception import CustomException
 
 
 class ModelTrainer:

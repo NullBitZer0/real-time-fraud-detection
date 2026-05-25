@@ -1,8 +1,8 @@
 import sys
 import pandas as pd
 
-from src.logger import logging
-from src.exception import CustomException
+from src.utils.logger import logging
+from src.utils.exception import CustomException
 
 
 class DataValidation:

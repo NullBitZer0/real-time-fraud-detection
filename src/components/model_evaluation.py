@@ -6,8 +6,8 @@ from sklearn.metrics import (
     classification_report
 )
 
-from src.logger import logging
-from src.exception import CustomException
+from src.utils.logger import logging
+from src.utils.exception import CustomException
 
 
 class ModelEvaluation:

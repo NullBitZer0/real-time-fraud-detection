@@ -6,7 +6,7 @@ from src.components.preprocessing import DataPreprocessing
 from src.components.feature_engineering import FeatureEngineering
 from src.components.model_training import ModelTrainer
 
-from src.logger import logging
+from src.utils.logger import logging
 
 
 if __name__ == "__main__":
@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     train_df = (
         feature_engineer
-        .initiate_feature_engineering(train_df)
+        .initiate_feature_engineering(train_df)s
     )
 
     test_df = (
