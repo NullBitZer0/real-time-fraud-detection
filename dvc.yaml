@@ -8,3 +8,27 @@ stages:
     outs:
     - artifacts/test.csv
     - artifacts/train.csv
+  preprocess:
+    cmd: python pipelines/preprocess_pipeline.py
+    deps:
+    - artifacts/test.csv
+    - artifacts/train.csv
+    - pipelines/preprocess_pipeline.py
+    - src/components/feature_engineering.py
+    - src/components/preprocessing.py
+    outs:
+    - artifacts/test_processed.csv
+    - artifacts/train_processed.csv
+  train:
+    cmd: python pipelines/train_pipeline.py
+    deps:
+    - artifacts/test_processed.csv
+    - artifacts/train_processed.csv
+    - pipelines/train_pipeline.py
+    - src/components/model_training.py
+    params:
+    - model.learning_rate
+    - model.max_depth
+    - model.n_estimators
+    outs:
+    - models/model.pkl
