@@ -1,0 +1,8 @@
+defaults:
+  - model: lightgbm
+
+data:
+  train_path: artifacts/train.csv
+  test_path: artifacts/test.csv
+
+model_path: models/model.pkl
