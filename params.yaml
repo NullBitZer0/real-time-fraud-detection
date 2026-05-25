@@ -1,0 +1,7 @@
+model:
+  n_estimators: 300
+  learning_rate: 0.05
+  max_depth: 10
+
+data:
+  test_size: 0.2
