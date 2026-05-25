@@ -3,7 +3,7 @@ import mlflow
 
 dagshub.init(
     repo_owner="NullBitZer0",
-    repo_name="fraud-detection-system",
+    repo_name="real-time-fraud-detection",
     mlflow=True
 )
 
