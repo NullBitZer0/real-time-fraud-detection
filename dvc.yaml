@@ -1,0 +1,10 @@
+stages:
+  ingest:
+    cmd: python pipelines/ingest_pipeline.py
+    deps:
+    - data/processed/merged_data.parquet
+    - pipelines/ingest_pipeline.py
+    - src/components/data_ingestion.py
+    outs:
+    - artifacts/test.csv
+    - artifacts/train.csv

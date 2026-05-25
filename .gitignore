@@ -24,7 +24,8 @@ fraud_detection.egg-info/
 *.csv
 *.parquet
 
-dvc.lock
+
+outputs/
 
 test.py
 test_validation.py
