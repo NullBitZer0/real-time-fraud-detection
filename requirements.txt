@@ -20,3 +20,4 @@ imbalanced-learn
 jupyter notebook
 pyyaml 
 joblib
+dvc-s3
