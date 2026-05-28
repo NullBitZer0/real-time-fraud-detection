@@ -1,0 +1,87 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python pipelines/ingest_pipeline.py
+    deps:
+    - path: data/processed/merged_data.parquet
+      hash: md5
+      md5: d520a8afa9784851c9f1d77ba6a53483
+      size: 76990100
+    - path: pipelines/ingest_pipeline.py
+      hash: md5
+      md5: 00de1ad75caaa108edc56140edb31058
+      size: 196
+    - path: src/components/data_ingestion.py
+      hash: md5
+      md5: 84b548c3c7e9ec6aa9b9f36d430cdfee
+      size: 1541
+    outs:
+    - path: artifacts/test.csv
+      hash: md5
+      md5: 4c59edef30962764922a9893fb5f5cd4
+      size: 145187522
+    - path: artifacts/train.csv
+      hash: md5
+      md5: 507f3d96d291134026472bd895be4aab
+      size: 581393738
+  preprocess:
+    cmd: python pipelines/preprocess_pipeline.py
+    deps:
+    - path: artifacts/test.csv
+      hash: md5
+      md5: 4c59edef30962764922a9893fb5f5cd4
+      size: 145187522
+    - path: artifacts/train.csv
+      hash: md5
+      md5: 507f3d96d291134026472bd895be4aab
+      size: 581393738
+    - path: pipelines/preprocess_pipeline.py
+      hash: md5
+      md5: 8a0663c0f763636f526483b642cfb337
+      size: 841
+    - path: src/components/feature_engineering.py
+      hash: md5
+      md5: 84c472db44a23814ec912ba197a078f4
+      size: 1410
+    - path: src/components/preprocessing.py
+      hash: md5
+      md5: dcdfd6b3f7ea298a5d7fe4e6b52ebe4a
+      size: 1695
+    outs:
+    - path: artifacts/test_processed.csv
+      hash: md5
+      md5: db9baf1bf9b5f80b628203162cac8879
+      size: 215959280
+    - path: artifacts/train_processed.csv
+      hash: md5
+      md5: a7f17b276531f9b6f148048461fca6be
+      size: 868433037
+  train:
+    cmd: python pipelines/training_pipeline.py
+    deps:
+    - path: artifacts/test_processed.csv
+      hash: md5
+      md5: db9baf1bf9b5f80b628203162cac8879
+      size: 215959280
+    - path: artifacts/train_processed.csv
+      hash: md5
+      md5: a7f17b276531f9b6f148048461fca6be
+      size: 868433037
+    - path: pipelines/training_pipeline.py
+      hash: md5
+      md5: 7a934d8db5a3c482f32c9b9e9c1a9bdf
+      size: 590
+    - path: src/components/model_training.py
+      hash: md5
+      md5: 058cd3b36e322ab4c353a270a883eb58
+      size: 3996
+    params:
+      params.yaml:
+        model.learning_rate: 0.05
+        model.max_depth: 10
+        model.n_estimators: 300
+    outs:
+    - path: models/model.pkl
+      hash: md5
+      md5: e1546678597f7f9e1b2785f523739da3
+      size: 2122648
