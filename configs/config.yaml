@@ -1,8 +1,11 @@
 defaults:
-  - model: lightgbm
+  - model: lightgbm    # switch to: xgboost or catboost
 
 data:
-  train_path: artifacts/train.csv
-  test_path: artifacts/test.csv
+  raw_path: data/raw/creditcard.csv
+  train_path: artifacts/train_processed.csv
+  test_path: artifacts/test_processed.csv
+  target_column: Class
+  test_size: 0.2
 
 model_path: models/model.pkl

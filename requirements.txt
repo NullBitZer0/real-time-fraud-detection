@@ -17,7 +17,7 @@ fastapi
 uvicorn
 evidently
 imbalanced-learn 
-jupyter notebook
+jupyter
 pyyaml 
 joblib
 dvc-s3
