@@ -1,33 +1,27 @@
-import hydra
+import yaml
 import pandas as pd
-
-from omegaconf import DictConfig
 
 from src.components.model_training import ModelTrainer
 
 
-@hydra.main(
-    version_base=None,
-    config_path="../configs",
-    config_name="config"
-)
+def load_params(path: str = "params.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
-def main(config: DictConfig):
 
-    train_df = pd.read_csv(
-        "artifacts/train_processed.csv"
-    )
+def main():
 
-    test_df = pd.read_csv(
-        "artifacts/test_processed.csv"
-    )
+    params = load_params()
+
+    train_df = pd.read_csv(params["data"]["train_path"])
+    test_df  = pd.read_csv(params["data"]["test_path"])
 
     trainer = ModelTrainer()
 
     metrics = trainer.initiate_model_training(
         train_df,
         test_df,
-        config
+        params
     )
 
     print(metrics)

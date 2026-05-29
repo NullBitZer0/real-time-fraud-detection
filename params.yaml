@@ -1,7 +1,27 @@
+data:
+  train_path: artifacts/train_processed.csv
+  test_path: artifacts/test_processed.csv
+  raw_train_path: artifacts/train.csv
+  raw_test_path: artifacts/test.csv
+  test_size: 0.2
+
 model:
+  model_name: lightgbm       # options: lightgbm | xgboost | catboost
+  model_path: models/model.pkl
+
+  # LightGBM params
   n_estimators: 300
   learning_rate: 0.05
   max_depth: 10
+  num_leaves: 64
+  random_state: 42
 
-data:
-  test_size: 0.2
+  # XGBoost extra params
+  subsample: 0.8
+  colsample_bytree: 0.8
+
+  # CatBoost extra params
+  iterations: 300
+  depth: 8
+  random_seed: 42
+  verbose: 0
