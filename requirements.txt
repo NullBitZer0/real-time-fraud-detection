@@ -10,6 +10,7 @@ lightgbm
 catboost 
 optuna 
 mlflow 
+hydra-core 
 dvc 
 dagshub 
 fastapi 

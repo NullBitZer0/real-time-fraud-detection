@@ -26,7 +26,7 @@ class ModelTrainer:
         self,
         train_df,
         test_df,
-        params: dict
+        config
     ):
 
         try:
@@ -49,59 +49,57 @@ class ModelTrainer:
 
             y_test = test_df["isFraud"]
 
-            # ── Model selection ──────────────────────────────────────────
-            mp = params["model"]                 # shorthand
-            model_name = mp["model_name"]
+            # Model Selection
 
-            if model_name == "lightgbm":
+            if config.model.model_name == "lightgbm":
 
                 model = LGBMClassifier(
-                    n_estimators=mp["n_estimators"],
-                    learning_rate=mp["learning_rate"],
-                    max_depth=mp["max_depth"],
-                    num_leaves=mp["num_leaves"],
-                    random_state=mp["random_state"]
+                    n_estimators=config.model.n_estimators,
+                    learning_rate=config.model.learning_rate,
+                    max_depth=config.model.max_depth,
+                    num_leaves=config.model.num_leaves,
+                    random_state=config.model.random_state
                 )
 
-            elif model_name == "xgboost":
+            elif config.model.model_name == "xgboost":
 
                 model = XGBClassifier(
-                    n_estimators=mp["n_estimators"],
-                    learning_rate=mp["learning_rate"],
-                    max_depth=mp["max_depth"],
-                    subsample=mp["subsample"],
-                    colsample_bytree=mp["colsample_bytree"],
+                    n_estimators=config.model.n_estimators,
+                    learning_rate=config.model.learning_rate,
+                    max_depth=config.model.max_depth,
+                    subsample=config.model.subsample,
+                    colsample_bytree=config.model.colsample_bytree,
                     eval_metric="logloss",
-                    random_state=mp["random_state"]
+                    random_state=config.model.random_state
                 )
 
-            elif model_name == "catboost":
+            elif config.model.model_name == "catboost":
 
                 model = CatBoostClassifier(
-                    iterations=mp["iterations"],
-                    learning_rate=mp["learning_rate"],
-                    depth=mp["depth"],
-                    random_seed=mp["random_seed"],
-                    verbose=mp["verbose"]
+                    iterations=config.model.iterations,
+                    learning_rate=config.model.learning_rate,
+                    depth=config.model.depth,
+                    random_seed=config.model.random_seed,
+                    verbose=config.model.verbose
                 )
 
             else:
                 raise Exception(
-                    f"Unsupported model: {model_name}"
+                    f"Unsupported model: {config.model.model_name}"
                 )
 
             logging.info(
-                f"Selected model: {model_name}"
+                f"Selected model: {config.model.model_name}"
             )
 
-            # ── MLflow Autologging ───────────────────────────────────────
+            # MLflow Autologging
             mlflow.autolog()
 
             with mlflow.start_run():
 
                 mlflow.set_tag(
                     "model_type",
-                    model_name
+                    config.model.model_name
                 )
 
                 model.fit(
@@ -142,12 +140,10 @@ class ModelTrainer:
                     f"PR AUC: {pr_auc}"
                 )
 
-            # ── Save model locally ───────────────────────────────────────
-            model_path = params["model"].get("model_path", "models/model.pkl")
-
+            # Save model locally
             joblib.dump(
                 model,
-                model_path
+                "models/model.pkl"
             )
 
             logging.info(

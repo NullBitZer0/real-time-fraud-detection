@@ -27,17 +27,8 @@ stages:
     - pipelines/training_pipeline.py
     - src/components/model_training.py
     params:
-    - model.model_name
-    - model.n_estimators
     - model.learning_rate
     - model.max_depth
-    - model.num_leaves
-    - model.random_state
-    - model.subsample
-    - model.colsample_bytree
-    - model.iterations
-    - model.depth
-    - model.random_seed
-    - model.verbose
+    - model.n_estimators
     outs:
     - models/model.pkl

@@ -1,0 +1,8 @@
+model_name: lightgbm
+
+n_estimators: 300
+learning_rate: 0.05
+max_depth: 10
+num_leaves: 64
+
+random_state: 42
