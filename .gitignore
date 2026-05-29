@@ -32,3 +32,4 @@ test_validation.py
 tessst_ingestion.py
 test_preprocessing.py
 test_feature_engineering.py
+fraud_detection.egg-info/SOURCES.txt
