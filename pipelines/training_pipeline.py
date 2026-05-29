@@ -1,18 +1,27 @@
-import hydra
+import yaml
 import pandas as pd
-
-from omegaconf import DictConfig
+from types import SimpleNamespace
 
 from src.components.model_training import ModelTrainer
 
 
-@hydra.main(
-    version_base=None,
-    config_path="../configs",
-    config_name="config"
-)
+def load_config(path="params.yaml"):
 
-def main(config: DictConfig):
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+
+    # Wrap nested dicts so trainer can use config.model.n_estimators etc.
+    config = SimpleNamespace(
+        model=SimpleNamespace(**raw["model"]),
+        data=SimpleNamespace(**raw["data"])
+    )
+
+    return config
+
+
+if __name__ == "__main__":
+
+    config = load_config()
 
     train_df = pd.read_csv(
         "artifacts/train_processed.csv"
@@ -31,7 +40,3 @@ def main(config: DictConfig):
     )
 
     print(metrics)
-
-
-if __name__ == "__main__":
-    main()

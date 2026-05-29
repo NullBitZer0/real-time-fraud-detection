@@ -15,39 +15,42 @@ class FeatureEngineering:
                 "Feature engineering started"
             )
 
-            # Transaction amount log transform
-            if "TransactionAmt" in df.columns:
+            # Log transform on Amount (skewed distribution)
+            if "Amount" in df.columns:
 
-                df["TransactionAmt_log"] = np.log1p(
-                    df["TransactionAmt"]
+                df["Amount_log"] = np.log1p(
+                    df["Amount"]
                 )
 
-            # Email matching feature
-            if (
-                "P_emaildomain" in df.columns
-                and
-                "R_emaildomain" in df.columns
-            ):
+            # Time-based features: hour of day and day cycle
+            if "Time" in df.columns:
 
-                df["email_match"] = (
-                    df["P_emaildomain"]
-                    ==
-                    df["R_emaildomain"]
-                ).astype(int)
+                # Convert seconds to hour of day (cyclic)
+                df["Hour"] = (df["Time"] // 3600) % 24
 
-            # Card features
-            card_cols = [
+                df["Hour_sin"] = np.sin(
+                    2 * np.pi * df["Hour"] / 24
+                )
+
+                df["Hour_cos"] = np.cos(
+                    2 * np.pi * df["Hour"] / 24
+                )
+
+            # Summary stats across PCA V-features
+            v_cols = [
                 col for col in df.columns
-                if "card" in col.lower()
+                if col.startswith("V")
             ]
 
-            if len(card_cols) > 0:
+            if len(v_cols) > 0:
 
-                df["card_feature_count"] = (
-                    df[card_cols]
-                    .notnull()
-                    .sum(axis=1)
-                )
+                df["V_mean"] = df[v_cols].mean(axis=1)
+
+                df["V_std"] = df[v_cols].std(axis=1)
+
+                df["V_max"] = df[v_cols].max(axis=1)
+
+                df["V_min"] = df[v_cols].min(axis=1)
 
             logging.info(
                 "Feature engineering completed"

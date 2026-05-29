@@ -10,9 +10,9 @@ class DataValidation:
     def validate_columns(self, df):
 
         required_columns = [
-            "TransactionID",
-            "TransactionAmt",
-            "isFraud"
+            "Time",
+            "Amount",
+            "Class"
         ]
 
         missing_columns = []

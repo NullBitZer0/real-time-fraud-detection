@@ -122,18 +122,18 @@ class OptunaTuner:
         try:
 
             X_train = train_df.drop(
-                "isFraud",
+                "Class",
                 axis=1
             )
 
-            y_train = train_df["isFraud"]
+            y_train = train_df["Class"]
 
             X_test = test_df.drop(
-                "isFraud",
+                "Class",
                 axis=1
             )
 
-            y_test = test_df["isFraud"]
+            y_test = test_df["Class"]
 
             study = optuna.create_study(
                 direction="maximize"

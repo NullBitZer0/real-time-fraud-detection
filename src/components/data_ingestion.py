@@ -17,7 +17,7 @@ class DataIngestion:
     def __init__(self):
 
         self.config = DataIngestionConfig(
-            raw_data_path="data/processed/merged_data.parquet",
+            raw_data_path="data/raw/creditcard.csv",
             train_path="artifacts/train.csv",
             test_path="artifacts/test.csv"
         )
@@ -28,7 +28,7 @@ class DataIngestion:
 
         try:
 
-            df = pd.read_parquet(
+            df = pd.read_csv(
                 self.config.raw_data_path
             )
 
@@ -40,7 +40,7 @@ class DataIngestion:
                 df,
                 test_size=0.2,
                 random_state=42,
-                stratify=df["isFraud"]
+                stratify=df["Class"]
             )
 
             train_set.to_csv(
