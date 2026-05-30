@@ -65,6 +65,28 @@ class OptunaTuner:
                     1.0
                 ),
 
+                # Regularisation — helps prevent overfitting on rare fraud class
+                "min_child_samples": trial.suggest_int(
+                    "min_child_samples",
+                    10,
+                    100
+                ),
+
+                "reg_alpha": trial.suggest_float(
+                    "reg_alpha",
+                    0.0,
+                    1.0
+                ),
+
+                "reg_lambda": trial.suggest_float(
+                    "reg_lambda",
+                    0.0,
+                    1.0
+                ),
+
+                # Fixed — confirmed best from experiments
+                "class_weight": "balanced",
+                "verbose": -1,
                 "random_state": 42
             }
 

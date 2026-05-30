@@ -58,6 +58,10 @@ class ModelTrainer:
                     learning_rate=config.model.learning_rate,
                     max_depth=config.model.max_depth,
                     num_leaves=config.model.num_leaves,
+                    subsample=config.model.subsample,
+                    colsample_bytree=config.model.colsample_bytree,
+                    class_weight=config.model.class_weight,
+                    verbose=config.model.verbose,
                     random_state=config.model.random_state
                 )
 
@@ -100,6 +104,17 @@ class ModelTrainer:
                 mlflow.set_tag(
                     "model_type",
                     config.model.model_name
+                )
+
+                # Log threshold used for inference
+                threshold = getattr(
+                    getattr(config, "data", None),
+                    "inference_threshold",
+                    0.5
+                )
+                mlflow.log_param(
+                    "inference_threshold",
+                    threshold
                 )
 
                 model.fit(

@@ -5,73 +5,121 @@ import joblib
 import pandas as pd
 
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler, RobustScaler
 
 from src.utils.logger import logging
 from src.utils.exception import CustomException
 
 
+# Columns to scale — engineered features + Amount_log
+SCALE_COLS = [
+    "Amount_log",
+    "Hour_sin",
+    "Hour_cos",
+    "V_mean",
+    "V_std",
+    "V_max",
+    "V_min",
+]
+
+
 class DataPreprocessing:
 
-    def initiate_preprocessing(self, train_path):
+    def __init__(self, scaler_type: str = "standard"):
+        """
+        Args:
+            scaler_type: "standard" (StandardScaler) or "robust" (RobustScaler).
+                         Read from params.yaml → data.scaler.
+        """
+        if scaler_type == "robust":
+            self.scaler = RobustScaler()
+        else:
+            self.scaler = StandardScaler()
 
+        self.scaler_type = scaler_type
+
+    def initiate_preprocessing(self, train_path, is_train: bool = True):
+        """
+        Args:
+            train_path : path to CSV to preprocess.
+            is_train   : if True, fit scaler/imputer on this data and save.
+                         if False, only transform (load saved artifacts).
+        """
         try:
 
             df = pd.read_csv(train_path)
 
-            missing_percentage = (
-                df.isnull().mean() * 100
+            logging.info(
+                f"Loaded {train_path} — shape: {df.shape}"
             )
 
-            drop_cols = missing_percentage[
-                missing_percentage > 90
-            ].index
+            # ── Drop high-missing columns ─────────────────────────────────────
+            missing_pct = df.isnull().mean() * 100
+            drop_cols = missing_pct[missing_pct > 90].index
+            df.drop(columns=drop_cols, inplace=True)
 
-            df.drop(
-                columns=drop_cols,
-                inplace=True
-            )
-
-            categorical_cols = df.select_dtypes(
-                include=["object"]
-            ).columns
-
+            # ── Encode categorical columns ────────────────────────────────────
+            categorical_cols = df.select_dtypes(include=["object"]).columns
             label_encoders = {}
 
             for col in categorical_cols:
-
                 df[col] = df[col].astype(str)
-
                 le = LabelEncoder()
-
                 df[col] = le.fit_transform(df[col])
-
                 label_encoders[col] = le
 
-            imputer = SimpleImputer(
-                strategy="median"
-            )
+            # ── Impute missing values ─────────────────────────────────────────
+            imputer = SimpleImputer(strategy="median")
 
-            df_imputed = pd.DataFrame(
-                imputer.fit_transform(df),
-                columns=df.columns
-            )
+            if is_train:
+                df_imputed = pd.DataFrame(
+                    imputer.fit_transform(df),
+                    columns=df.columns
+                )
+            else:
+                imputer = joblib.load("models/imputer.pkl")
+                df_imputed = pd.DataFrame(
+                    imputer.transform(df),
+                    columns=df.columns
+                )
 
-            os.makedirs("models", exist_ok=True)
+            # ── Scale engineered features ─────────────────────────────────────
+            # Only scale columns that exist in this dataframe
+            cols_to_scale = [
+                c for c in SCALE_COLS
+                if c in df_imputed.columns
+            ]
 
-            joblib.dump(
-                imputer,
-                "models/imputer.pkl"
-            )
+            if cols_to_scale:
 
-            joblib.dump(
-                label_encoders,
-                "models/label_encoders.pkl"
-            )
+                if is_train:
+                    df_imputed[cols_to_scale] = (
+                        self.scaler.fit_transform(
+                            df_imputed[cols_to_scale]
+                        )
+                    )
+                else:
+                    scaler = joblib.load("models/scaler.pkl")
+                    df_imputed[cols_to_scale] = (
+                        scaler.transform(
+                            df_imputed[cols_to_scale]
+                        )
+                    )
 
-            logging.info(
-                "Preprocessing completed"
-            )
+            # ── Save artifacts (train only) ───────────────────────────────────
+            if is_train:
+                os.makedirs("models", exist_ok=True)
+
+                joblib.dump(imputer,        "models/imputer.pkl")
+                joblib.dump(self.scaler,    "models/scaler.pkl")
+                joblib.dump(label_encoders, "models/label_encoders.pkl")
+
+                logging.info(
+                    f"Saved scaler ({self.scaler_type}), "
+                    "imputer, label_encoders to models/"
+                )
+
+            logging.info("Preprocessing completed")
 
             return df_imputed
 
