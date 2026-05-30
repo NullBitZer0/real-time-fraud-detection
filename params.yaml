@@ -1,16 +1,25 @@
 model:
   model_name: lightgbm      # options: lightgbm, xgboost, catboost
-  n_estimators: 300
-  learning_rate: 0.05
-  max_depth: 10
-  num_leaves: 64
-  subsample: 0.8
-  colsample_bytree: 0.8
+
+  # ── Optuna-tuned (PR-AUC = 0.8879) ─────────────────────────────────────────
+  n_estimators: 882
+  learning_rate: 0.227
+  max_depth: 7
+  num_leaves: 55
+  subsample: 0.655
+  colsample_bytree: 0.575
+  min_child_samples: 16
+  reg_alpha: 0.083
+  reg_lambda: 0.206
+
+  # ── Fixed ────────────────────────────────────────────────────────────────────
+  class_weight: balanced
+  verbose: -1
   random_state: 42
 
 data:
   raw_path: data/raw/creditcard.csv
   test_size: 0.2
   target_column: Class
-  scaler: standard              # options: standard, robust
-  inference_threshold: 0.35    # optimised threshold from experiments (better F1 than 0.5)
+  scaler: standard              # StandardScaler — best from experiments
+  inference_threshold: 0.35    # optimised F1 threshold from experiments

@@ -60,6 +60,9 @@ class ModelTrainer:
                     num_leaves=config.model.num_leaves,
                     subsample=config.model.subsample,
                     colsample_bytree=config.model.colsample_bytree,
+                    min_child_samples=config.model.min_child_samples,
+                    reg_alpha=config.model.reg_alpha,
+                    reg_lambda=config.model.reg_lambda,
                     class_weight=config.model.class_weight,
                     verbose=config.model.verbose,
                     random_state=config.model.random_state

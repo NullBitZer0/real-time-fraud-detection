@@ -1,12 +1,17 @@
 model_name: lightgbm
 
-n_estimators: 300
-learning_rate: 0.05
-max_depth: 10
-num_leaves: 64
-subsample: 0.8
-colsample_bytree: 0.8
+# ── Optuna-tuned hyperparameters (PR-AUC = 0.8879) ───────────────────────────
+n_estimators: 882
+learning_rate: 0.227
+max_depth: 7
+num_leaves: 55
+subsample: 0.655
+colsample_bytree: 0.575
+min_child_samples: 16
+reg_alpha: 0.083
+reg_lambda: 0.206
+
+# ── Fixed settings ────────────────────────────────────────────────────────────
 class_weight: balanced
 verbose: -1
-
 random_state: 42
