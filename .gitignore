@@ -1,35 +1,58 @@
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+fraud_detection.egg-info/
+dist/
+build/
+.eggs/
 
+# ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
+env/
 
+# ── Pipeline artifacts ────────────────────────────────────────────────────────
 artifacts/
 logs/
 models/
+outputs/
 
-.mlflow/
-
-.ipynb_checkpoints/
-
+# ── Data files ────────────────────────────────────────────────────────────────
 data/raw/
 data/processed/
-notebooks/catboost_info
-fraud_detection.egg-info/
-
-.env
-
 *.csv
 *.parquet
 
+# ── MLflow ────────────────────────────────────────────────────────────────────
+.mlflow/
+mlflow.db
+mlruns/
 
-outputs/
+# ── Notebooks ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+notebooks/catboost_info/
 
-test.py
-test_validation.py
-tessst_ingestion.py
-test_preprocessing.py
-test_feature_engineering.py
-fraud_detection.egg-info/SOURCES.txt
+# ── Secrets & environment ─────────────────────────────────────────────────────
+.env
+*.env
+
+# ── Frontend (React/Vite) ─────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── Feast ─────────────────────────────────────────────────────────────────────
+feast_repo/data/
+feast_repo/registry/
+feast_repo/online_store/
+feature_store.db
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+*.log
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
