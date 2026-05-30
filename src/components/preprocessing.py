@@ -25,11 +25,11 @@ SCALE_COLS = [
 
 class DataPreprocessing:
 
-    def __init__(self, scaler_type: str = "standard"):
+    def __init__(self, scaler_type: str = "standard", target_col: str = "Class"):
         """
         Args:
-            scaler_type: "standard" (StandardScaler) or "robust" (RobustScaler).
-                         Read from params.yaml → data.scaler.
+            scaler_type: "standard" or "robust"
+            target_col : target column name — excluded from imputer/scaler fit
         """
         if scaler_type == "robust":
             self.scaler = RobustScaler()
@@ -37,6 +37,7 @@ class DataPreprocessing:
             self.scaler = StandardScaler()
 
         self.scaler_type = scaler_type
+        self.target_col  = target_col
 
     def initiate_preprocessing(self, train_path, is_train: bool = True):
         """
@@ -53,6 +54,13 @@ class DataPreprocessing:
                 f"Loaded {train_path} — shape: {df.shape}"
             )
 
+            # ── Separate target so imputer is fit on features only ────────────
+            # This prevents the "feature names mismatch" error at inference time
+            target_series = None
+            if self.target_col in df.columns:
+                target_series = df[self.target_col].copy()
+                df = df.drop(columns=[self.target_col])
+
             # ── Drop high-missing columns ─────────────────────────────────────
             missing_pct = df.isnull().mean() * 100
             drop_cols = missing_pct[missing_pct > 90].index
@@ -68,7 +76,7 @@ class DataPreprocessing:
                 df[col] = le.fit_transform(df[col])
                 label_encoders[col] = le
 
-            # ── Impute missing values ─────────────────────────────────────────
+            # ── Impute missing values (features only — no target) ─────────────
             imputer = SimpleImputer(strategy="median")
 
             if is_train:
@@ -82,6 +90,10 @@ class DataPreprocessing:
                     imputer.transform(df),
                     columns=df.columns
                 )
+
+            # ── Add target back (needed for train/test CSVs) ──────────────────
+            if target_series is not None:
+                df_imputed[self.target_col] = target_series.values
 
             # ── Scale engineered features ─────────────────────────────────────
             # Only scale columns that exist in this dataframe

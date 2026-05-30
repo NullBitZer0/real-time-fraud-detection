@@ -22,7 +22,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df["V_max"]  = df[v_cols].max(axis=1)
     df["V_min"]  = df[v_cols].min(axis=1)
 
-    df.drop(columns=["Time", "Amount", "Hour"], errors="ignore", inplace=True)
+    # NOTE: Time, Amount, Hour are NOT dropped here — model was trained with them present
     return df
 
 
@@ -72,16 +72,17 @@ class PredictionPipeline:
                     )
                     df[col] = le.transform(df[col])
 
-            # Impute
+            # Impute (on raw features — before engineering)
             df = pd.DataFrame(
                 self.imputer.transform(df),
                 columns=df.columns
             )
 
-            # Feature engineering
+            # Feature engineering — must happen BEFORE scaling
+            # (scaler was fit on engineered features: Amount_log, Hour_sin, etc.)
             df = add_features(df)
 
-            # Scale
+            # Scale engineered features using saved scaler
             cols_to_scale = [c for c in SCALE_COLS if c in df.columns]
             if cols_to_scale:
                 df[cols_to_scale] = self.scaler.transform(df[cols_to_scale])
