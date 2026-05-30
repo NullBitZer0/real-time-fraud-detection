@@ -49,12 +49,12 @@ def get_risk_level(prob: float) -> str:
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Starting Fraud Detection API...")
+    print("Starting Fraud Detection API...")
     try:
         app.state.pipeline = PredictionPipeline()
-        print(f"✅ Model loaded — threshold={app.state.pipeline.threshold}")
+        print(f"Model loaded — threshold={app.state.pipeline.threshold}")
     except Exception as e:
-        print(f"⚠️  Model not loaded: {e}")
+        print(f"Model not loaded: {e}")
         app.state.pipeline = None
 
     app.state.manager    = ConnectionManager()
@@ -62,12 +62,12 @@ async def lifespan(app: FastAPI):
     app.state.stats      = {"total": 0, "fraud": 0, "latencies": []}
 
     yield
-    print("🛑 Shutting down.")
+    print("Shutting down.")
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title       = "🔍 Fraud Detection API",
+    title       = "Fraud Detection API",
     description = "Real-time credit card fraud scoring — LightGBM + Feast + Kafka",
     version     = "1.0.0",
     lifespan    = lifespan,
