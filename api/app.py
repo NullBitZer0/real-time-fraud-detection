@@ -155,7 +155,10 @@ async def websocket_endpoint(websocket: WebSocket):
     manager = websocket.app.state.manager
     await manager.connect(websocket)
     try:
+        # Wait for client disconnect — receive() raises WebSocketDisconnect on close
         while True:
-            await asyncio.sleep(10)  # keep-alive ping
+            await websocket.receive_text()
     except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception:
         manager.disconnect(websocket)
