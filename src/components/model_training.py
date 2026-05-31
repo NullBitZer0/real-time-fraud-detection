@@ -5,6 +5,8 @@ import mlflow
 import mlflow.sklearn
 import dagshub
 
+from omegaconf import DictConfig
+
 from lightgbm import LGBMClassifier
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
@@ -26,151 +28,97 @@ class ModelTrainer:
         self,
         train_df,
         test_df,
-        config
+        cfg: DictConfig       # Hydra DictConfig — use dot-access
     ):
 
         try:
 
-            logging.info(
-                "Model training started"
-            )
+            logging.info("Model training started")
 
-            X_train = train_df.drop(
-                "Class",
-                axis=1
-            )
+            target_col = cfg.data.target_column
+            threshold  = cfg.data.inference_threshold
 
-            y_train = train_df["Class"]
+            X_train = train_df.drop(target_col, axis=1)
+            y_train = train_df[target_col]
 
-            X_test = test_df.drop(
-                "Class",
-                axis=1
-            )
+            X_test  = test_df.drop(target_col, axis=1)
+            y_test  = test_df[target_col]
 
-            y_test = test_df["Class"]
-
-            # Model Selection
-
-            if config.model.model_name == "lightgbm":
+            # ── Model selection ───────────────────────────────────────────────
+            if cfg.model.model_name == "lightgbm":
 
                 model = LGBMClassifier(
-                    n_estimators=config.model.n_estimators,
-                    learning_rate=config.model.learning_rate,
-                    max_depth=config.model.max_depth,
-                    num_leaves=config.model.num_leaves,
-                    subsample=config.model.subsample,
-                    colsample_bytree=config.model.colsample_bytree,
-                    min_child_samples=config.model.min_child_samples,
-                    reg_alpha=config.model.reg_alpha,
-                    reg_lambda=config.model.reg_lambda,
-                    class_weight=config.model.class_weight,
-                    verbose=config.model.verbose,
-                    random_state=config.model.random_state
+                    n_estimators=cfg.model.n_estimators,
+                    learning_rate=cfg.model.learning_rate,
+                    max_depth=cfg.model.max_depth,
+                    num_leaves=cfg.model.num_leaves,
+                    subsample=cfg.model.subsample,
+                    colsample_bytree=cfg.model.colsample_bytree,
+                    min_child_samples=cfg.model.min_child_samples,
+                    reg_alpha=cfg.model.reg_alpha,
+                    reg_lambda=cfg.model.reg_lambda,
+                    class_weight=cfg.model.class_weight,
+                    verbose=cfg.model.verbose,
+                    random_state=cfg.model.random_state
                 )
 
-            elif config.model.model_name == "xgboost":
+            elif cfg.model.model_name == "xgboost":
 
                 model = XGBClassifier(
-                    n_estimators=config.model.n_estimators,
-                    learning_rate=config.model.learning_rate,
-                    max_depth=config.model.max_depth,
-                    subsample=config.model.subsample,
-                    colsample_bytree=config.model.colsample_bytree,
+                    n_estimators=cfg.model.n_estimators,
+                    learning_rate=cfg.model.learning_rate,
+                    max_depth=cfg.model.max_depth,
+                    subsample=cfg.model.subsample,
+                    colsample_bytree=cfg.model.colsample_bytree,
                     eval_metric="logloss",
-                    random_state=config.model.random_state
+                    random_state=cfg.model.random_state
                 )
 
-            elif config.model.model_name == "catboost":
+            elif cfg.model.model_name == "catboost":
 
                 model = CatBoostClassifier(
-                    iterations=config.model.iterations,
-                    learning_rate=config.model.learning_rate,
-                    depth=config.model.depth,
-                    random_seed=config.model.random_seed,
-                    verbose=config.model.verbose
+                    iterations=cfg.model.iterations,
+                    learning_rate=cfg.model.learning_rate,
+                    depth=cfg.model.depth,
+                    random_seed=cfg.model.random_seed,
+                    verbose=cfg.model.verbose
                 )
 
             else:
-                raise Exception(
-                    f"Unsupported model: {config.model.model_name}"
+                raise ValueError(
+                    f"Unsupported model: {cfg.model.model_name}"
                 )
 
-            logging.info(
-                f"Selected model: {config.model.model_name}"
-            )
+            logging.info(f"Selected model: {cfg.model.model_name}")
 
-            # MLflow Autologging
+            # ── MLflow Autologging ────────────────────────────────────────────
             mlflow.autolog()
 
-            with mlflow.start_run():
+            with mlflow.start_run(run_name=f"train_{cfg.model.model_name}"):
 
-                mlflow.set_tag(
-                    "model_type",
-                    config.model.model_name
-                )
+                mlflow.set_tag("model_type", cfg.model.model_name)
+                mlflow.log_param("inference_threshold", threshold)
 
-                # Log threshold used for inference
-                threshold = getattr(
-                    getattr(config, "data", None),
-                    "inference_threshold",
-                    0.5
-                )
-                mlflow.log_param(
-                    "inference_threshold",
-                    threshold
-                )
+                model.fit(X_train, y_train)
 
-                model.fit(
-                    X_train,
-                    y_train
-                )
+                probs   = model.predict_proba(X_test)[:, 1]
+                roc_auc = roc_auc_score(y_test, probs)
+                pr_auc  = average_precision_score(y_test, probs)
 
-                probs = model.predict_proba(
-                    X_test
-                )[:, 1]
+                mlflow.log_metric("custom_roc_auc", roc_auc)
+                mlflow.log_metric("custom_pr_auc",  pr_auc)
 
-                roc_auc = roc_auc_score(
-                    y_test,
-                    probs
-                )
+                logging.info(f"ROC AUC : {roc_auc:.4f}")
+                logging.info(f"PR AUC  : {pr_auc:.4f}")
 
-                pr_auc = average_precision_score(
-                    y_test,
-                    probs
-                )
+            # ── Save model ────────────────────────────────────────────────────
+            joblib.dump(model, "models/model.pkl")
 
-                # Custom fraud metrics
-                mlflow.log_metric(
-                    "custom_roc_auc",
-                    roc_auc
-                )
-
-                mlflow.log_metric(
-                    "custom_pr_auc",
-                    pr_auc
-                )
-
-                logging.info(
-                    f"ROC AUC: {roc_auc}"
-                )
-
-                logging.info(
-                    f"PR AUC: {pr_auc}"
-                )
-
-            # Save model locally
-            joblib.dump(
-                model,
-                "models/model.pkl"
-            )
-
-            logging.info(
-                "Model saved successfully"
-            )
+            logging.info("Model saved → models/model.pkl")
 
             return {
                 "roc_auc": roc_auc,
-                "pr_auc": pr_auc
+                "pr_auc":  pr_auc
             }
 
         except Exception as e:

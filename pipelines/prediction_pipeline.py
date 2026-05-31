@@ -1,88 +1,110 @@
 import sys
 import yaml
 import joblib
-import numpy as np
 import pandas as pd
+
+from src.components.preprocessing import DataPreprocessing
+from src.components.feature_engineering import FeatureEngineering
 
 from src.utils.logger import logging
 from src.utils.exception import CustomException
 
 
-# ── Feature engineering (same as training pipeline) ───────────────────────────
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["Amount_log"] = np.log1p(df["Amount"])
-    df["Hour"]       = (df["Time"] // 3600) % 24
-    df["Hour_sin"]   = np.sin(2 * np.pi * df["Hour"] / 24)
-    df["Hour_cos"]   = np.cos(2 * np.pi * df["Hour"] / 24)
-
-    v_cols = [c for c in df.columns if c.startswith("V")]
-    df["V_mean"] = df[v_cols].mean(axis=1)
-    df["V_std"]  = df[v_cols].std(axis=1)
-    df["V_max"]  = df[v_cols].max(axis=1)
-    df["V_min"]  = df[v_cols].min(axis=1)
-
-    # NOTE: Time, Amount, Hour are NOT dropped here — model was trained with them present
-    return df
-
-
+# Columns that were scaled during training — must be scaled the same way at inference
 SCALE_COLS = [
     "Amount_log", "Hour_sin", "Hour_cos",
-    "V_mean", "V_std", "V_max", "V_min"
+    "V_mean", "V_std", "V_max", "V_min",
 ]
 
 
 class PredictionPipeline:
+    """
+    Inference pipeline for a single transaction or a batch DataFrame.
+
+    Applies the same preprocessing and feature engineering as training,
+    then runs the saved LightGBM model.
+
+    Loaded artifacts (from models/):
+        model.pkl          — trained LightGBM classifier
+        scaler.pkl         — fitted StandardScaler / RobustScaler
+        imputer.pkl        — fitted SimpleImputer
+        label_encoders.pkl — dict of {col: LabelEncoder}
+    """
 
     def __init__(self, params_path: str = "params.yaml"):
 
         with open(params_path) as f:
             params = yaml.safe_load(f)
 
-        self.threshold = params["data"].get("inference_threshold", 0.5)
-        self.target    = params["data"].get("target_column", "Class")
+        self.threshold  = params["data"].get("inference_threshold", 0.5)
+        self.target_col = params["data"].get("target_column", "Class")
+        self.scaler_type = params["data"].get("scaler", "standard")
 
-        # Load saved artifacts from training
+        # Load saved artifacts produced during training
         self.model          = joblib.load("models/model.pkl")
         self.scaler         = joblib.load("models/scaler.pkl")
         self.imputer        = joblib.load("models/imputer.pkl")
         self.label_encoders = joblib.load("models/label_encoders.pkl")
 
+        # Components — used for transform-only (no fitting)
+        self.preprocessor     = DataPreprocessing(
+            scaler_type=self.scaler_type,
+            target_col=self.target_col
+        )
+        self.feature_engineer = FeatureEngineering()
+
         logging.info(
-            f"PredictionPipeline loaded — threshold={self.threshold}"
+            f"PredictionPipeline ready — threshold={self.threshold}"
         )
 
     def preprocess(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply same preprocessing as training — no fitting."""
+        """
+        Apply the same preprocessing as training — transform only, no fitting.
 
+        Steps:
+            1. Drop target column if present (inference on unlabelled data)
+            2. Encode categoricals with saved LabelEncoders
+            3. Reorder columns to match imputer fit order; fill missing cols as NaN
+            4. Impute with saved imputer
+            5. Feature engineering (Amount_log, Hour_sin/cos, V stats)
+            6. Scale engineered features with saved scaler
+        """
         try:
 
-            # Drop target if present (inference on new data)
-            if self.target in df.columns:
-                df = df.drop(columns=[self.target])
+            df = df.copy()
 
-            # Encode categoricals
+            # 1. Drop target if accidentally included in input
+            if self.target_col in df.columns:
+                df = df.drop(columns=[self.target_col])
+
+            # 2. Encode categoricals using saved LabelEncoders
             for col, le in self.label_encoders.items():
                 if col in df.columns:
                     df[col] = df[col].astype(str)
-                    # Handle unseen categories gracefully
                     known = set(le.classes_)
+                    # Gracefully handle unseen categories → fall back to first class
                     df[col] = df[col].apply(
                         lambda x: x if x in known else le.classes_[0]
                     )
                     df[col] = le.transform(df[col])
 
-            # Impute (on raw features — before engineering)
+            # 3. Align columns to imputer's expected feature order
+            expected_cols = list(self.imputer.feature_names_in_)
+            for c in expected_cols:
+                if c not in df.columns:
+                    df[c] = float("nan")
+            df = df[expected_cols]
+
+            # 4. Impute using saved imputer (transform only)
             df = pd.DataFrame(
                 self.imputer.transform(df),
-                columns=df.columns
+                columns=expected_cols
             )
 
-            # Feature engineering — must happen BEFORE scaling
-            # (scaler was fit on engineered features: Amount_log, Hour_sin, etc.)
-            df = add_features(df)
+            # 5. Feature engineering (same logic as training)
+            df = self.feature_engineer.initiate_feature_engineering(df)
 
-            # Scale engineered features using saved scaler
+            # 6. Scale engineered features using saved scaler (transform only)
             cols_to_scale = [c for c in SCALE_COLS if c in df.columns]
             if cols_to_scale:
                 df[cols_to_scale] = self.scaler.transform(df[cols_to_scale])
@@ -94,13 +116,19 @@ class PredictionPipeline:
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Returns original df with two new columns:
-            fraud_probability : float (0.0 – 1.0)
-            fraud_prediction  : int   (0 = normal, 1 = fraud)
+        Predict fraud probability and binary label for each row.
+
+        Args:
+            df: raw transaction DataFrame (may include or exclude target column)
+
+        Returns:
+            Original df with two new columns:
+                fraud_probability — float [0.0, 1.0]
+                fraud_prediction  — int   (0 = legitimate, 1 = fraud)
         """
         try:
 
-            processed = self.preprocess(df.copy())
+            processed = self.preprocess(df)
 
             probs = self.model.predict_proba(processed)[:, 1]
             preds = (probs >= self.threshold).astype(int)
@@ -113,7 +141,7 @@ class PredictionPipeline:
             logging.info(
                 f"Predicted {len(df)} transactions — "
                 f"{fraud_count} flagged as fraud "
-                f"({fraud_count/len(df)*100:.2f}%)"
+                f"({fraud_count / len(df) * 100:.2f}%)"
             )
 
             return result
@@ -122,16 +150,16 @@ class PredictionPipeline:
             raise CustomException(e, sys)
 
 
-# ── Run as script on test set ─────────────────────────────────────────────────
+# ── Run as a quick sanity-check script ───────────────────────────────────────
 if __name__ == "__main__":
 
     pipeline = PredictionPipeline()
 
-    # Load a sample (first 1000 rows of test set for quick check)
+    # Load first 1 000 rows of the held-out test set for a quick check
     test_df = pd.read_csv("artifacts/test.csv").head(1000)
 
     predictions = pipeline.predict(test_df)
 
     print(predictions[["fraud_probability", "fraud_prediction"]].head(20))
-    print(f"\nFlagged fraud: {predictions['fraud_prediction'].sum()} / {len(predictions)}")
-    print(f"Threshold used: {pipeline.threshold}")
+    print(f"\nFlagged as fraud : {predictions['fraud_prediction'].sum()} / {len(predictions)}")
+    print(f"Threshold used   : {pipeline.threshold}")
