@@ -21,5 +21,5 @@ data:
   raw_path: data/raw/creditcard.csv
   test_size: 0.2
   target_column: Class
-  scaler: standard              # StandardScaler — best from experiments
-  inference_threshold: 0.35    # optimised F1 threshold from experiments
+  scaler: robust                # RobustScaler — per experiment
+  inference_threshold: 0.70    # optimised F1 threshold from experiments

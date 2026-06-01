@@ -13,7 +13,6 @@ from src.utils.exception import CustomException
 # Columns that were scaled during training — must be scaled the same way at inference
 SCALE_COLS = [
     "Amount_log", "Hour_sin", "Hour_cos",
-    "V_mean", "V_std", "V_max", "V_min",
 ]
 
 
@@ -103,6 +102,12 @@ class PredictionPipeline:
 
             # 5. Feature engineering (same logic as training)
             df = self.feature_engineer.initiate_feature_engineering(df)
+
+            # Drop raw columns — model was trained on V-only + engineered only
+            drop_cols = ["Time", "Amount"]
+            for c in drop_cols:
+                if c in df.columns:
+                    df.drop(columns=[c], inplace=True)
 
             # 6. Scale engineered features using saved scaler (transform only)
             cols_to_scale = [c for c in SCALE_COLS if c in df.columns]

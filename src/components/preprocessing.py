@@ -91,29 +91,6 @@ class DataPreprocessing:
             if target_series is not None:
                 df_imputed[self.target_col] = target_series.values
 
-            # ── Scale engineered features ─────────────────────────────────────
-            # Only scale columns that exist in this dataframe
-            cols_to_scale = [
-                c for c in SCALE_COLS
-                if c in df_imputed.columns
-            ]
-
-            if cols_to_scale:
-
-                if is_train:
-                    df_imputed[cols_to_scale] = (
-                        self.scaler.fit_transform(
-                            df_imputed[cols_to_scale]
-                        )
-                    )
-                else:
-                    scaler = joblib.load("models/scaler.pkl")
-                    df_imputed[cols_to_scale] = (
-                        scaler.transform(
-                            df_imputed[cols_to_scale]
-                        )
-                    )
-
             # ── Save artifacts (train only) ───────────────────────────────────
             if is_train:
                 os.makedirs("models", exist_ok=True)
