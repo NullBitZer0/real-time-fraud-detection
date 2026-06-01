@@ -22,3 +22,6 @@ shap
 pyyaml 
 joblib
 dvc-s3
+feast[postgres,redis]
+psycopg2-binary
+redis

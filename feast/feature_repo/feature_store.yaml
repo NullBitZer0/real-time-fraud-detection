@@ -1,0 +1,20 @@
+project: fraud_detection
+provider: local
+
+offline_store:
+  type: postgres
+  host: localhost
+  port: 5432
+  database: feast
+  user: feast
+  password: feast
+
+online_store:
+  type: redis
+  connection_string: localhost:6379
+
+registry:
+  registry_type: sql
+  path: postgresql+psycopg2://feast:feast@localhost:5432/feast
+
+entity_key_serialization_version: 3
