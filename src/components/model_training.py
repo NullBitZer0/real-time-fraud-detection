@@ -108,6 +108,9 @@ class ModelTrainer:
                 mlflow.log_metric("custom_roc_auc", roc_auc)
                 mlflow.log_metric("custom_pr_auc",  pr_auc)
 
+                # Explicitly log model to guarantee 'model' artifact is present
+                mlflow.sklearn.log_model(model, artifact_path="model")
+
                 logging.info(f"ROC AUC : {roc_auc:.4f}")
                 logging.info(f"PR AUC  : {pr_auc:.4f}")
 

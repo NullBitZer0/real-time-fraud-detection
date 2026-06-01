@@ -11,15 +11,11 @@ from src.utils.logger import logging
 from src.utils.exception import CustomException
 
 
-# Columns to scale — engineered features + Amount_log
+# Columns to scale — engineered features only (V-stats removed per experiment results)
 SCALE_COLS = [
     "Amount_log",
     "Hour_sin",
     "Hour_cos",
-    "V_mean",
-    "V_std",
-    "V_max",
-    "V_min",
 ]
 
 

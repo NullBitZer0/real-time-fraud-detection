@@ -86,6 +86,10 @@ def run_training_pipeline(cfg: DictConfig):
     train_df = feature_engineer.initiate_feature_engineering(train_df)
     test_df  = feature_engineer.initiate_feature_engineering(test_df)
 
+    # Outlier removal — training only (remove extreme transactions, data-driven)
+    logging.info("Step 3b — Outlier Removal (train only)")
+    train_df = feature_engineer.remove_outliers(train_df, target_col=cfg.data.target_column)
+
     train_df.to_csv(cfg.data.train_processed, index=False)
     test_df.to_csv(cfg.data.test_processed,   index=False)
 
@@ -150,7 +154,7 @@ def run_training_pipeline(cfg: DictConfig):
     registry_result = registry.register_best_model(
         model_name="FraudDetectionModel",
         experiment_name="fraud_detection_experiment",
-        metric="eval_pr_auc",
+        metric="custom_pr_auc",
         stage="Staging"
     )
 
