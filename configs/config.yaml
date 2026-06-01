@@ -9,8 +9,8 @@ data:
   test_processed:      artifacts/test_processed.csv
   target_column:       Class
   test_size:           0.2
-  scaler:              standard        # standard | robust
-  inference_threshold: 0.35           # optimised F1 threshold from experiments
+  scaler:              robust          # standard | robust (robust chosen per experiment)
+  inference_threshold: 0.70           # optimised F1 threshold from experiments
 
 optuna:
   enabled:   false     # set to true to run hyperparameter search before training
