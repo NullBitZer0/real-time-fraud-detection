@@ -18,6 +18,7 @@ uvicorn
 evidently
 imbalanced-learn 
 jupyter
+shap
 pyyaml 
 joblib
 dvc-s3
