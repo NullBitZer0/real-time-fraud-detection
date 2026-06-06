@@ -135,9 +135,14 @@
     <div class="actions">
       <button class="btn-predict" onclick="predict()">🔍 Predict</button>
       <button class="btn-legit" onclick="fillLegit()">✅ Fill Legitimate</button>
-      <button class="btn-fraud" onclick="fillFraud()">⚠️ Try Fraud</button>
+      <button class="btn-fraud" onclick="fillFraud('fraud-low')">⚠️ Low (0-10%)</button>
+      <button class="btn-fraud" onclick="fillFraud('fraud-medium-low')">⚖️ Med-Low (10-70%)</button>
+      <button class="btn-fraud" onclick="fillFraud('fraud-medium-high')">🔥 Med-High (70-90%)</button>
+      <button class="btn-fraud" onclick="fillFraud('fraud-high')">🚨 High (90%+)</button>
+      <button class="btn-fraud" onclick="fillFraud('fraud-random')">🎲 Random</button>
       <button class="btn-clear" onclick="clearForm()">✕ Clear</button>
     </div>
+    <div id="example-hint" style="font-size:0.75rem;color:#888;margin-top:0.5rem;display:none"></div>
 
     <div id="error"></div>
     <div id="result">
@@ -191,9 +196,8 @@
   function setValues(data) {
     ALL_FIELDS.forEach(id => {
       const el = document.getElementById(id);
-      const v = data[id];
-      if (v !== undefined) {
-        el.value = typeof v === 'number' ? v.toFixed(6) : v;
+      if (el && data[id] !== undefined) {
+        el.value = typeof data[id] === 'number' ? data[id].toFixed(6) : data[id];
         el.classList.remove('invalid');
       }
     });
@@ -207,24 +211,39 @@
     document.getElementById('result').style.display = 'none';
     document.getElementById('result').className = '';
     document.getElementById('error').style.display = 'none';
+    document.getElementById('example-hint').style.display = 'none';
   }
 
   // ── Fill examples from backend ────────────────────────────────────
   async function fillLegit() {
-    const r = await fetch('/examples');
+    const r = await fetch('/examples?type=legit');
     const data = await r.json();
-    if (data.legitimate && Object.keys(data.legitimate).length) {
-      setValues(data.legitimate);
+    if (data && Object.keys(data).length) {
+      const hint = document.getElementById('example-hint');
+      if (data._prob !== undefined) {
+        hint.textContent = `Model predicts this as legitimate (confidence: ${(data._prob * 100).toFixed(4)}%)`;
+        hint.style.display = 'block';
+      } else {
+        hint.style.display = 'none';
+      }
+      setValues(data);
       document.getElementById('result').style.display = 'none';
       document.getElementById('error').style.display = 'none';
     }
   }
 
-  async function fillFraud() {
-    const r = await fetch('/examples');
+  async function fillFraud(type) {
+    const r = await fetch(`/examples?type=${type}`);
     const data = await r.json();
-    if (data.fraud && Object.keys(data.fraud).length) {
-      setValues(data.fraud);
+    if (data && Object.keys(data).length) {
+      const hint = document.getElementById('example-hint');
+      if (data._prob !== undefined) {
+        hint.textContent = `Model predicts this as ${data._pred ? 'FRAUD' : 'legitimate'} (confidence: ${(data._prob * 100).toFixed(4)}%)`;
+        hint.style.display = 'block';
+      } else {
+        hint.style.display = 'none';
+      }
+      setValues(data);
       document.getElementById('result').style.display = 'none';
       document.getElementById('error').style.display = 'none';
     }
@@ -269,9 +288,9 @@
         div.querySelector('.badge').textContent = '✅ LEGITIMATE';
       }
 
-      div.querySelector('.prob').textContent = `${(result.probability * 100).toFixed(2)}%`;
+      div.querySelector('.prob').textContent = `${(result.probability * 100).toFixed(4)}%`;
       div.querySelector('.detail').textContent =
-        `Fraud probability: ${(result.probability * 100).toFixed(2)}%  |  Threshold: ${(result.threshold * 100).toFixed(0)}%`;
+        `Fraud probability: ${(result.probability * 100).toFixed(4)}%  |  Threshold: ${(result.threshold * 100).toFixed(0)}%`;
       div.style.display = 'block';
 
     } catch (e) {

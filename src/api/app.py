@@ -1,7 +1,7 @@
-import sys, random
+import sys, random, math
 from pathlib import Path
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,26 +15,57 @@ CSV_PATH = ROOT / "data/raw/creditcard.csv"
 app = FastAPI(title="Fraud Detection Demo")
 
 legitimate_examples: list[dict] = []
-fraud_examples: list[dict] = []
+fraud_buckets: dict[str, list[dict]] = {
+    "low": [], "medium-low": [], "medium-high": [], "high": [],
+}
 pipeline: PredictionPipeline | None = None
 
 
 @app.on_event("startup")
 def startup():
-    global legitimate_examples, fraud_examples, pipeline
+    global legitimate_examples, fraud_buckets, pipeline
 
     pipeline = PredictionPipeline()
-    print(f"Pipeline ready — threshold={pipeline.threshold}")
 
-    print(f"CSV_PATH: {CSV_PATH}  exists: {CSV_PATH.exists()}")
-    if CSV_PATH.exists():
-        df = pd.read_csv(CSV_PATH)
-        print(f"CSV loaded: {df.shape}")
-        legit = df[df["Class"] == 0].drop(columns=["Class"]).head(500)
-        legitimate_examples.extend(legit.to_dict(orient="records"))
-        fraud = df[df["Class"] == 1].drop(columns=["Class"]).head(50)
-        fraud_examples.extend(fraud.to_dict(orient="records"))
-        print(f"Loaded {len(legitimate_examples)} legit + {len(fraud_examples)} fraud examples")
+    if not CSV_PATH.exists():
+        print(f"CSV not found at {CSV_PATH}")
+        return
+
+    df = pd.read_csv(CSV_PATH)
+
+    # Legitimate examples — batch predict for speed
+    legit = df[df["Class"] == 0].drop(columns=["Class"]).head(500)
+    legit_out = pipeline.predict(legit)
+    legitimate_examples.clear()
+    for i in range(len(legit)):
+        row = legit.iloc[i].to_dict()
+        row["_prob"] = round(float(legit_out.iloc[i]["fraud_probability"]), 6)
+        row["_pred"] = int(legit_out.iloc[i]["fraud_prediction"])
+        legitimate_examples.append(row)
+    print(f"Loaded {len(legitimate_examples)} legit examples")
+
+    # Fraud examples — batch predict, bucket by confidence
+    fraud = df[df["Class"] == 1].drop(columns=["Class"]).head(200)
+    fraud_out = pipeline.predict(fraud)
+    for bucket in fraud_buckets.values():
+        bucket.clear()
+    for i in range(len(fraud)):
+        row = fraud.iloc[i].to_dict()
+        prob = round(float(fraud_out.iloc[i]["fraud_probability"]), 6)
+        row["_prob"] = prob
+        row["_pred"] = int(fraud_out.iloc[i]["fraud_prediction"])
+        if prob < 0.1:
+            fraud_buckets["low"].append(row)
+        elif prob < 0.7:
+            fraud_buckets["medium-low"].append(row)
+        elif prob < 0.9:
+            fraud_buckets["medium-high"].append(row)
+        else:
+            fraud_buckets["high"].append(row)
+    print(f"Fraud buckets: low={len(fraud_buckets['low'])} "
+          f"med-low={len(fraud_buckets['medium-low'])} "
+          f"med-high={len(fraud_buckets['medium-high'])} "
+          f"high={len(fraud_buckets['high'])}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -57,9 +88,10 @@ async def predict(data: dict):
         input_df = pd.DataFrame([row])
         result = pipeline.predict(input_df)
 
+        prob = float(result.iloc[0]["fraud_probability"])
         return {
             "fraud": bool(result.iloc[0]["fraud_prediction"]),
-            "probability": round(float(result.iloc[0]["fraud_probability"]), 4),
+            "probability": round(prob, 6),
             "threshold": pipeline.threshold,
         }
     except Exception as e:
@@ -67,13 +99,29 @@ async def predict(data: dict):
 
 
 @app.get("/examples")
-async def examples():
-    if not legitimate_examples or not fraud_examples:
-        return {"legitimate": {}, "fraud": {}}
-    return {
-        "legitimate": random.choice(legitimate_examples) if legitimate_examples else {},
-        "fraud": random.choice(fraud_examples) if fraud_examples else {},
-    }
+async def examples(type: str = Query("legit")):
+    if pipeline is None:
+        return {}
+
+    if type == "legit":
+        if not legitimate_examples:
+            return {}
+        return random.choice(legitimate_examples)
+
+    bucket_map = {"fraud-low": "low", "fraud-medium-low": "medium-low",
+                  "fraud-medium-high": "medium-high", "fraud-high": "high"}
+
+    if type == "fraud-random":
+        all_fraud = (fraud_buckets["low"] + fraud_buckets["medium-low"]
+                     + fraud_buckets["medium-high"] + fraud_buckets["high"])
+        return random.choice(all_fraud) if all_fraud else {}
+
+    bucket = bucket_map.get(type, "high")
+    rows = fraud_buckets.get(bucket, fraud_buckets["high"])
+    if not rows:
+        rows = fraud_buckets["high"]
+
+    return random.choice(rows)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
