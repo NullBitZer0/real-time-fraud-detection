@@ -1,90 +1,66 @@
-import sys
-import joblib
+"""Model evaluation for the Sparkov pipeline.
 
+Generates the metrics + 3-tier table that goes into the demo dashboard.
+Used by the training pipeline to summarize the model, and by the
+prediction pipeline to compare against ground truth.
+"""
+import sys
+import json
+import numpy as np
 import pandas as pd
-import mlflow
 
 from sklearn.metrics import (
-    confusion_matrix,
-    classification_report,
-    roc_auc_score,
-    average_precision_score,
-    f1_score,
-    precision_score,
-    recall_score,
+    confusion_matrix, classification_report,
+    roc_auc_score, average_precision_score,
+    f1_score, precision_score, recall_score, fbeta_score,
 )
 
-from src.utils.logger import logging
-from src.utils.exception import CustomException
+
+def evaluate_model(model, X_test, y_test, tier_thresholds=None, threshold=None):
+    """Evaluate a fitted model on a test set. Returns a dict of metrics
+    including 3-tier operating points.
+
+    Args:
+        model            : fitted classifier with predict_proba
+        X_test, y_test   : test features and labels
+        tier_thresholds  : dict with tier1/tier2/tier3 thresholds (defaults to F2-opt)
+        threshold        : binary decision threshold for `fraud_prediction`
+    """
+    if threshold is None:
+        threshold = tier_thresholds.get("tier2_review_queue", 0.5) if tier_thresholds else 0.5
+
+    probs = model.predict_proba(X_test)[:, 1]
+    preds = (probs >= threshold).astype(int)
+
+    metrics = {
+        "pr_auc":  float(average_precision_score(y_test, probs)),
+        "roc_auc": float(roc_auc_score(y_test, probs)),
+        "threshold": float(threshold),
+        "f1":     float(f1_score(y_test, preds, zero_division=0)),
+        "precision": float(precision_score(y_test, preds, zero_division=0)),
+        "recall":    float(recall_score(y_test, preds, zero_division=0)),
+        "f2":     float(fbeta_score(y_test, preds, beta=2, zero_division=0)),
+        "confusion_matrix": confusion_matrix(y_test, preds).tolist(),
+        "n_test": int(len(y_test)),
+        "n_fraud_test": int(y_test.sum()),
+    }
+
+    if tier_thresholds:
+        metrics["tier_thresholds"] = tier_thresholds
+        metrics["tier_confusion"] = _tier_confusion(probs, y_test, tier_thresholds)
+
+    return metrics
 
 
-class ModelEvaluation:
-
-    def evaluate_model(
-        self,
-        model,
-        X_test,
-        y_test,
-        threshold: float = 0.35
-    ):
-        """
-        Evaluates the model using PR-AUC as primary metric.
-        Uses `threshold` instead of 0.5 for binary predictions.
-
-        Args:
-            model     : fitted classifier
-            X_test    : test features
-            y_test    : true labels
-            threshold : decision threshold from params.yaml → data.inference_threshold
-        """
-        try:
-
-            # ── Probabilities ─────────────────────────────────────────────────
-            probs = model.predict_proba(X_test)[:, 1]
-
-            # ── Apply optimised threshold ─────────────────────────────────────
-            preds = (probs >= threshold).astype(int)
-
-            # ── Core metrics ──────────────────────────────────────────────────
-            pr_auc  = average_precision_score(y_test, probs)
-            roc_auc = roc_auc_score(y_test, probs)
-            f1      = f1_score(y_test, preds, zero_division=0)
-            prec    = precision_score(y_test, preds, zero_division=0)
-            rec     = recall_score(y_test, preds, zero_division=0)
-
-            cm     = confusion_matrix(y_test, preds)
-            report = classification_report(y_test, preds, zero_division=0)
-
-            # ── Log to MLflow ─────────────────────────────────────────────────
-            mlflow.log_metric("eval_pr_auc",   pr_auc)
-            mlflow.log_metric("eval_roc_auc",  roc_auc)
-            mlflow.log_metric("eval_f1",       f1)
-            mlflow.log_metric("eval_precision", prec)
-            mlflow.log_metric("eval_recall",   rec)
-            mlflow.log_param("eval_threshold", threshold)
-
-            # ── Log to console ────────────────────────────────────────────────
-            logging.info(
-                f"[Evaluation @ threshold={threshold}]"
-            )
-            logging.info(f"  PR-AUC    : {pr_auc:.4f}  ← primary metric")
-            logging.info(f"  ROC-AUC   : {roc_auc:.4f}")
-            logging.info(f"  F1        : {f1:.4f}")
-            logging.info(f"  Precision : {prec:.4f}")
-            logging.info(f"  Recall    : {rec:.4f}")
-            logging.info(f"Confusion Matrix:\n{cm}")
-            logging.info(f"Classification Report:\n{report}")
-
-            return {
-                "pr_auc":           pr_auc,
-                "roc_auc":          roc_auc,
-                "f1":               f1,
-                "precision":        prec,
-                "recall":           rec,
-                "confusion_matrix": cm,
-                "classification_report": report,
-                "threshold":        threshold,
-            }
-
-        except Exception as e:
-            raise CustomException(e, sys)
+def _tier_confusion(probs, y_true, tier_thresholds):
+    """For each tier, count how many fraud and legit are caught (TP/FP)."""
+    out = {}
+    for tier_name, t in tier_thresholds.items():
+        preds = (probs >= t).astype(int)
+        tp = int(((preds == 1) & (y_true == 1)).sum())
+        fp = int(((preds == 1) & (y_true == 0)).sum())
+        fn = int(((preds == 0) & (y_true == 1)).sum())
+        out[tier_name] = {"threshold": t, "tp": tp, "fp": fp, "fn": fn,
+                          "precision": float(precision_score(y_true, preds, zero_division=0)),
+                          "recall":    float(recall_score   (y_true, preds, zero_division=0))}
+    return out
