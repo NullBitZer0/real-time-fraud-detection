@@ -11,16 +11,16 @@ export default function LiveFeed({ events }) {
         {events.map((e) => (
           <div
             key={e.transaction_id}
-            className={`feed-item ${e.fraud_prediction === 1 ? 'fraud' : 'normal'}`}
+            className={`feed-item tier-${e.tier ?? 0}`}
           >
             <span className="feed-icon">
-              {e.fraud_prediction === 1 ? '🚨' : '✅'}
+              {e.tier === 1 ? '🚨' : e.tier === 2 ? '⚠️' : e.tier === 3 ? '🟡' : '✅'}
             </span>
             <span className="feed-id">
               {e.transaction_id?.slice(0, 8)}…
             </span>
-            <span className={`risk-badge risk-${e.risk_level}`}>
-              {e.risk_level}
+            <span className={`tier-badge tier-${e.tier ?? 0}`}>
+              T{e.tier ?? 0}
             </span>
             <span className={`feed-score ${e.fraud_probability > 0.5 ? 'high' : 'low'}`}>
               {(e.fraud_probability * 100).toFixed(1)}%

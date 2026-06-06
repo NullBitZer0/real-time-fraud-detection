@@ -18,6 +18,10 @@ const CustomTooltip = ({ active, payload }) => {
   )
 }
 
+const T1 = 56.13
+const T2 = 11.98
+const T3 = 0.40
+
 export default function FraudChart({ chartData }) {
   return (
     <div className="card">
@@ -39,20 +43,21 @@ export default function FraudChart({ chartData }) {
             tickFormatter={(v) => `${v}%`}
           />
           <Tooltip content={<CustomTooltip />} />
-          <ReferenceLine y={0.17} stroke="#f59e0b" strokeDasharray="4 4"
-            label={{ value: 'Dataset avg', fill: '#f59e0b', fontSize: 10 }} />
+          <ReferenceLine y={T1} stroke="#dc2626" strokeDasharray="4 4"
+            label={{ value: 'T1 auto_block',     fill: '#dc2626', fontSize: 10 }} />
+          <ReferenceLine y={T2} stroke="#f59e0b" strokeDasharray="4 4"
+            label={{ value: 'T2 review_queue',   fill: '#f59e0b', fontSize: 10 }} />
+          <ReferenceLine y={T3} stroke="#eab308" strokeDasharray="4 4"
+            label={{ value: 'T3 soft_signal',    fill: '#eab308', fontSize: 10 }} />
           <Line
-            type="monotone"
-            dataKey="rate"
-            stroke="#ef4444"
-            strokeWidth={2}
-            dot={false}
+            type="monotone" dataKey="rate"
+            stroke="#ef4444" strokeWidth={2} dot={false}
             activeDot={{ r: 4, fill: '#ef4444' }}
           />
         </LineChart>
       </ResponsiveContainer>
       <div style={{ fontSize: '11px', color: 'var(--muted)', textAlign: 'center' }}>
-        Rolling fraud rate (%) — updates on each transaction
+        Rolling fraud rate (%) with 3-tier thresholds
       </div>
     </div>
   )
