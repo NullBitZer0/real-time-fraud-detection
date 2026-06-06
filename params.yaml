@@ -1,25 +1,23 @@
+# Sparkov fraud-detection pipeline params
+# Switched from IBM creditcard.csv to Sparkov (fraudTrain/fraudTest.csv) and
+# from LightGBM to CatBoost baseline. See notebooks/features.ipynb for the
+# research notebook and src/components/ for the production code.
+
 model:
-  model_name: lightgbm      # options: lightgbm, xgboost, catboost
+  model_name:      catboost       # was: lightgbm
 
-  # ── Optuna-tuned (PR-AUC = 0.8879) ─────────────────────────────────────────
-  n_estimators: 882
-  learning_rate: 0.227
-  max_depth: 7
-  num_leaves: 55
-  subsample: 0.655
-  colsample_bytree: 0.575
-  min_child_samples: 16
-  reg_alpha: 0.083
-  reg_lambda: 0.206
-
-  # ── Fixed ────────────────────────────────────────────────────────────────────
-  class_weight: balanced
-  verbose: -1
-  random_state: 42
+  # ── CatBoost baseline (test PR-AUC ~0.88 on Sparkov) ──────────────────────
+  iterations:      500
+  depth:           8
+  learning_rate:   0.05
+  eval_metric:     PRAUC
+  early_stopping:  50
+  random_seed:     42
+  task_type:       CPU
 
 data:
-  raw_path: data/raw/creditcard.csv
-  test_size: 0.2
-  target_column: Class
-  scaler: robust                # RobustScaler — per experiment
-  inference_threshold: 0.70    # optimised F1 threshold from experiments
+  train_path:    data/raw/fraudTrain.csv
+  test_path:     data/raw/fraudTest.csv
+  val_quantile:  0.80        # last 20% of fraudTrain as val
+  target_column: is_fraud
+  inference_threshold: 0.1198  # F2-optimal (Tier 2 review queue)
