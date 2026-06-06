@@ -1,186 +1,98 @@
+"""Standalone Optuna tuning script — run via `dvc repro optuna_tune`.
+
+Uses the parquet sources built by data_ingestion_feast.py (which has
+both train + test rows with features already computed). Trains on the
+train rows, evaluates on the val rows.
+
+Output: models/optuna_best.json with the best params found.
+"""
+import os
 import sys
+import json
+import argparse
 import optuna
-import mlflow
+import numpy as np
 import pandas as pd
-
-from lightgbm import LGBMClassifier
-
-from sklearn.metrics import (
-    roc_auc_score,
-    average_precision_score
-)
+from catboost import CatBoostClassifier
+from sklearn.metrics import average_precision_score
+from sklearn.model_selection import TimeSeriesSplit
 
 from src.utils.logger import logging
 from src.utils.exception import CustomException
 
 
-class OptunaTuner:
+def load_data():
+    """Read the per-transaction parquet, split by timestamp into train/val."""
+    df = pd.read_parquet("data/sparkov_transaction_features.parquet")
+    df = df.sort_values("event_timestamp").reset_index(drop=True)
+    cutoff = df["event_timestamp"].quantile(0.80)
+    val_df  = df[df.event_timestamp >= cutoff].reset_index(drop=True)
+    train_df = df[df.event_timestamp <  cutoff].reset_index(drop=True)
 
-    def objective(
-        self,
-        trial,
-        X_train,
-        y_train,
-        X_test,
-        y_test
-    ):
+    feat_cols = [c for c in df.columns if c not in (
+        "trans_num", "event_timestamp", "created", "is_fraud",
+    )]
+    X_train = train_df[feat_cols].astype("float32").values
+    y_train = train_df["is_fraud"].astype(int).values
+    X_val   = val_df[feat_cols].astype("float32").values
+    y_val   = val_df["is_fraud"].astype(int).values
+    return X_train, y_train, X_val, y_val, feat_cols
 
-        try:
 
-            params = {
+def objective(trial, X_train, y_train, X_val, y_val):
+    """Optuna objective: maximize val PR-AUC."""
+    params = {
+        "iterations":    trial.suggest_int("iterations", 200, 1000, step=100),
+        "depth":         trial.suggest_int("depth", 4, 10),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+        "l2_leaf_reg":   trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True),
+        "subsample":     trial.suggest_float("subsample", 0.6, 1.0),
+        "random_seed":   42,
+        "eval_metric":   "PRAUC",
+        "verbose":       0,
+        "early_stopping_rounds": 50,
+        "task_type":     "CPU",
+    }
+    model = CatBoostClassifier(**params)
+    model.fit(X_train, y_train, eval_set=(X_val, y_val))
+    val_proba = model.predict_proba(X_val)[:, 1]
+    return average_precision_score(y_val, val_proba)
 
-                "n_estimators": trial.suggest_int(
-                    "n_estimators",
-                    100,
-                    1000
-                ),
 
-                "learning_rate": trial.suggest_float(
-                    "learning_rate",
-                    0.01,
-                    0.3
-                ),
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", default="models/optuna_best.json")
+    parser.add_argument("--n-trials", type=int, default=20)
+    parser.add_argument("--timeout-minutes", type=int, default=0,
+                        help="If > 0, stop after N minutes")
+    args = parser.parse_args()
 
-                "max_depth": trial.suggest_int(
-                    "max_depth",
-                    3,
-                    15
-                ),
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    logging.info(f"Optuna tuning started — n_trials={args.n_trials} timeout={args.timeout_minutes}m")
 
-                "num_leaves": trial.suggest_int(
-                    "num_leaves",
-                    20,
-                    200
-                ),
+    X_train, y_train, X_val, y_val, feat_cols = load_data()
+    logging.info(f"Train: {X_train.shape}  Val: {X_val.shape}  features={len(feat_cols)}")
 
-                "subsample": trial.suggest_float(
-                    "subsample",
-                    0.5,
-                    1.0
-                ),
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
+    study.optimize(
+        lambda t: objective(t, X_train, y_train, X_val, y_val),
+        n_trials=args.n_trials,
+        timeout=(args.timeout_minutes * 60) if args.timeout_minutes else None,
+        show_progress_bar=False,
+    )
 
-                "colsample_bytree": trial.suggest_float(
-                    "colsample_bytree",
-                    0.5,
-                    1.0
-                ),
+    best = {
+        "best_value": float(study.best_value),
+        "best_params": study.best_params,
+        "n_trials":    len(study.trials),
+    }
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w") as f:
+        json.dump(best, f, indent=2)
+    logging.info(f"Best val PR-AUC: {best['best_value']:.4f}")
+    logging.info(f"Best params: {best['best_params']}")
+    logging.info(f"Saved to {args.out}")
 
-                # Regularisation — helps prevent overfitting on rare fraud class
-                "min_child_samples": trial.suggest_int(
-                    "min_child_samples",
-                    10,
-                    100
-                ),
 
-                "reg_alpha": trial.suggest_float(
-                    "reg_alpha",
-                    0.0,
-                    1.0
-                ),
-
-                "reg_lambda": trial.suggest_float(
-                    "reg_lambda",
-                    0.0,
-                    1.0
-                ),
-
-                # Fixed — confirmed best from experiments
-                "class_weight": "balanced",
-                "verbose": -1,
-                "random_state": 42
-            }
-
-            with mlflow.start_run(
-                nested=True
-            ):
-
-                mlflow.log_params(params)
-
-                model = LGBMClassifier(
-                    **params
-                )
-
-                model.fit(
-                    X_train,
-                    y_train
-                )
-
-                probs = model.predict_proba(
-                    X_test
-                )[:, 1]
-
-                roc_auc = roc_auc_score(
-                    y_test,
-                    probs
-                )
-
-                pr_auc = average_precision_score(
-                    y_test,
-                    probs
-                )
-
-                mlflow.log_metric(
-                    "roc_auc",
-                    roc_auc
-                )
-
-                mlflow.log_metric(
-                    "pr_auc",
-                    pr_auc
-                )
-
-                return pr_auc
-
-        except Exception as e:
-            raise CustomException(e, sys)
-
-    def initiate_optuna(
-        self,
-        train_df,
-        test_df,
-        n_trials=10
-    ):
-
-        try:
-
-            X_train = train_df.drop(
-                "Class",
-                axis=1
-            )
-
-            y_train = train_df["Class"]
-
-            X_test = test_df.drop(
-                "Class",
-                axis=1
-            )
-
-            y_test = test_df["Class"]
-
-            study = optuna.create_study(
-                direction="maximize"
-            )
-
-            study.optimize(
-                lambda trial: self.objective(
-                    trial,
-                    X_train,
-                    y_train,
-                    X_test,
-                    y_test
-                ),
-                n_trials=n_trials
-            )
-
-            logging.info(
-                f"Best Trial: {study.best_trial.params}"
-            )
-
-            logging.info(
-                f"Best Score: {study.best_value}"
-            )
-
-            return study
-
-        except Exception as e:
-            raise CustomException(e, sys)
+if __name__ == "__main__":
+    main()
