@@ -1,19 +1,44 @@
+# Sparkov fraud-detection pipeline config
+
 defaults:
-  - model: lightgbm    # switch via CLI: model=xgboost or model=catboost
+  - model: catboost
 
 data:
-  raw_path:            data/raw/creditcard.csv
-  train_path:          artifacts/train.csv
-  test_path:           artifacts/test.csv
-  train_processed:     artifacts/train_processed.csv
-  test_processed:      artifacts/test_processed.csv
-  target_column:       Class
-  test_size:           0.2
-  scaler:              robust          # standard | robust (robust chosen per experiment)
-  inference_threshold: 0.70           # optimised F1 threshold from experiments
+  # Training data source: "postgres" (fraud_detection.raw_transactions) or "csv"
+  source:             postgres
+  # Input files (only used when source=csv)
+  train_path:          data/raw/fraudTrain.csv
+  test_path:           data/raw/fraudTest.csv
+  # Output artifacts
+  out_train:           artifacts/sparkov_train.csv
+  out_val:             artifacts/sparkov_val.csv
+  out_test:            artifacts/sparkov_test.csv
+  # Time-based split
+  val_quantile:        0.80        # last 20% of fraudTrain -> val
+  # Target
+  target_column:       is_fraud
+  # 3-tier thresholds (from notebooks/experiments.ipynb OOF run)
+  tier_thresholds:
+    tier1_auto_block:   0.5613
+    tier2_review_queue: 0.1198
+    tier3_soft_signal:  0.0040
+
+model:
+  model_name:        catboost
+  iterations:        500
+  depth:             8
+  learning_rate:     0.05
+  eval_metric:       PRAUC
+  early_stopping:    50
+  random_seed:       42
 
 optuna:
-  enabled:   false     # set to true to run hyperparameter search before training
-  n_trials:  20
+  enabled:           false        # deferred — run `dvc repro optuna_tune` separately
+  n_trials:          20
+  timeout_minutes:   0            # 0 = no timeout (rely on n_trials)
 
-model_path: models/model.pkl
+artifacts:
+  model_dir:        models
+  model_path:       models/catboost.cbm
+  metadata_path:    models/metadata.json
+  feature_eng_path: models/feature_engineering.pkl

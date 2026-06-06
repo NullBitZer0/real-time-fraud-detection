@@ -1,8 +1,10 @@
-model_name: catboost
+# CatBoost model config (default for the Sparkov pipeline)
 
-iterations: 300
-learning_rate: 0.05
-depth: 8
-
-random_seed: 42
-verbose: 0
+model_name:     catboost
+iterations:     500
+depth:          8
+learning_rate:  0.05
+eval_metric:    PRAUC
+early_stopping: 50
+random_seed:    42
+task_type:      CPU
