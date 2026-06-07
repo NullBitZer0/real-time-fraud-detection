@@ -9,20 +9,16 @@ Two source paths for features:
 The 6 velocity features and 4 merchant features come from Redis.
 Missing values (entity not in Redis yet) → 0 fallback.
 
-Decisions are also written to a Redis cache (`fraud:decision:{trans_num}`)
-for fast polling by the React dashboard. TTL configurable via
-`decision_cache_ttl_seconds` in params.yaml.
-
 Loads the trained CatBoost model from models/catboost.cbm and applies
 the 3-tier logic (auto_block / review_queue / soft_signal / approve).
+Predictions are stored permanently in the Postgres audit log via
+api/app.py:insert_decision().
 """
 import json
-import os
 import sys
 
 import joblib
 import pandas as pd
-import redis
 from catboost import CatBoostClassifier
 
 from src.components.feature_store import FeatureStoreClient
@@ -38,14 +34,11 @@ ONLINE_FEATURES = [
     "amt_per_merchant_mean", "amt_per_merchant_std",
 ]
 
-DEFAULT_DECISION_TTL = 3600  # 1h, override via env DECISION_CACHE_TTL_SECONDS
-
 
 class PredictionPipeline:
     """Loads model + Feast client; predicts fraud probability + 3-tier action."""
 
-    def __init__(self, model_dir: str = "models", use_feast: bool = True,
-                  use_decision_cache: bool = True):
+    def __init__(self, model_dir: str = "models", use_feast: bool = True):
 
         # Load trained CatBoost model
         self.model = CatBoostClassifier()
@@ -61,27 +54,10 @@ class PredictionPipeline:
         self.use_feast = use_feast
         self.fsc = FeatureStoreClient.get() if use_feast else None
 
-        # Decision cache (Redis) — write decisions so React can poll
-        self.use_decision_cache = use_decision_cache
-        if use_decision_cache:
-            try:
-                self.redis = redis.Redis(
-                    host=os.environ.get("REDIS_HOST", "localhost"),
-                    port=int(os.environ.get("REDIS_PORT", 6379)),
-                    decode_responses=True,
-                )
-                self.redis.ping()
-                self.cache_ttl = int(os.environ.get("DECISION_CACHE_TTL_SECONDS", DEFAULT_DECISION_TTL))
-            except Exception as e:
-                logging.warning(f"Redis decision cache disabled — connect failed: {e}")
-                self.use_decision_cache = False
-                self.redis = None
-
         logging.info(
             f"PredictionPipeline ready — model={self.metadata['model_name']} | "
             f"features={len(self.features)} | "
             f"feast={'on' if use_feast else 'off'} | "
-            f"decision_cache={'on' if self.use_decision_cache else 'off'} | "
             f"tiers={self.tier_thresholds}"
         )
 
@@ -106,33 +82,16 @@ class PredictionPipeline:
                 df[c] = 0.0
             return df
 
-    def _cache_decision(self, trans_num: str, decision: dict) -> None:
-        """Write a single decision to the Redis decision cache."""
-        if not self.use_decision_cache or self.redis is None:
-            return
-        try:
-            key = f"fraud:decision:{trans_num}"
-            self.redis.setex(key, self.cache_ttl, json.dumps(decision, default=str))
-        except Exception as e:
-            logging.warning(f"Failed to cache decision for {trans_num}: {e}")
-
     def get_cached_decision(self, trans_num: str) -> dict:
-        """Read a single decision from the Redis decision cache."""
-        if not self.use_decision_cache or self.redis is None:
-            return None
-        try:
-            raw = self.redis.get(f"fraud:decision:{trans_num}")
-            return json.loads(raw) if raw else None
-        except Exception as e:
-            logging.warning(f"Failed to read cached decision for {trans_num}: {e}")
-            return None
+        """Legacy method — decision cache was removed.
+        Returns None; predictions are stored permanently in Postgres audit log."""
+        return None
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
         """Predict fraud probability + 3-tier action for each row.
 
         Returns:
             Original df with extra columns: proba, tier, action, threshold.
-            Each decision is also written to Redis (`fraud:decision:{trans_num}`).
         """
         try:
             df = df.copy()
@@ -155,21 +114,15 @@ class PredictionPipeline:
             # 4. Predict
             probs = self.model.predict_proba(X)[:, 1]
 
-            # 5. Map to 3-tier + cache each decision
+            # 5. Map to 3-tier
             tiers, actions, thresholds = [], [], []
             for trans_num, p in zip(ids, probs):
                 t = self.classify_tier(float(p))
                 tiers.append(t["tier"])
                 actions.append(t["action"])
                 thresholds.append(t["threshold"])
-                self._cache_decision(trans_num, {
-                    "trans_num":    trans_num,
-                    "proba":        float(round(p, 4)),
-                    "tier":         t["tier"],
-                    "action":       t["action"],
-                    "threshold":    t["threshold"],
-                    "is_fraud_ground_truth": None,
-                })
+                # Decisions stored permanently in Postgres audit log
+                # (insert_decision in api/app.py — no Redis cache)
 
             out = df.copy()
             out["transaction_id"] = ids
@@ -198,7 +151,7 @@ if __name__ == "__main__":
     pipe = PredictionPipeline()
     out = pipe.predict(df)
     print(out[["trans_num", "proba", "tier", "action"]].to_string())
-    # Check the cache
+    # Legacy cache check (always None now — predictions are in Postgres audit log)
     for tn in out["trans_num"].head(3):
         cached = pipe.get_cached_decision(tn)
         print(f"  cached {tn[:8]}… → {cached}")

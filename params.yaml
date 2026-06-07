@@ -51,4 +51,8 @@ optuna:
   timeout_minutes:   0            # 0 = no timeout (rely on n_trials)
 
 inference:
-  decision_cache_ttl_seconds: 3600   # Redis TTL for /demo/decision/{trans_num}
+  # Decision cache is disabled — predictions go straight to Postgres audit log
+  # (see api/app.py:insert_decision). The Redis cache was removed because
+  # the dashboard no longer polls individual decisions — all monitoring is
+  # handled by Grafana + Prometheus.
+  decision_cache_ttl_seconds: 0

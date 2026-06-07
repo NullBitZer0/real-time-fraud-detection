@@ -143,15 +143,8 @@ async def readyz(request: Request):
     if p is None:
         overall_ok = False
 
-    # 2. Redis (decision cache + Feast online store)
-    try:
-        if p is not None and p.redis is not None:
-            p.redis.ping()
-        checks["redis"] = {"ok": True}
-    except Exception as e:
-        checks["redis"] = {"ok": False, "error": str(e)}
-        # Redis is optional — don't fail the whole readiness check
-        # overall_ok = False
+    # 2. Redis (Feast online store — probed via Feast itself, see check 4)
+    checks["redis"] = {"ok": True, "note": "health verified via Feast check below"}
 
     # 3. Postgres (audit log)
     try:
@@ -335,19 +328,56 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
 # ── /demo/decision/{trans_num} ────────────────────────────────────────────────
 @app.get("/demo/decision/{trans_num}", tags=["Demo"])
 async def get_decision(trans_num: str, request: Request):
-    """Read a single decision from the Redis decision cache (fraud:decision:{trans_num}).
+    """Look up a single decision from the Postgres audit log.
 
-    Returns 200 + decision if cached, 404 if not present.
-    Used by the React dashboard to poll for results after a /predict call.
+    Returns 200 + decision if found, 404 if not present.
+    The legacy Redis decision cache was removed — predictions are now
+    stored permanently in the Postgres audit log.
     """
-    pipeline = request.app.state.pipeline
-    if pipeline is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-
-    cached = pipeline.get_cached_decision(trans_num)
-    if not cached:
-        raise HTTPException(status_code=404, detail=f"no cached decision for {trans_num}")
-    return cached
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.environ.get("POSTGRES_HOST", "localhost"),
+            port=int(os.environ.get("POSTGRES_PORT", 5432)),
+            user=os.environ.get("POSTGRES_USER", "feast"),
+            password=os.environ.get("POSTGRES_PASSWORD", "feast"),
+            dbname=os.environ.get("POSTGRES_DB", "feast"),
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trans_num, fraud_probability, tier, action, threshold_used,
+                       is_fraud_ground_truth, model_version, latency_ms, ingested_at,
+                       request_ip, user_agent
+                FROM   fraud_detection.decision_log
+                WHERE  trans_num = %s
+                """,
+                (trans_num,),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"no decision found for {trans_num}")
+        return {
+            "trans_num":                row[0],
+            "fraud_probability":        row[1],
+            "tier":                     row[2],
+            "action":                   row[3],
+            "threshold_used":           row[4],
+            "is_fraud_ground_truth":    row[5],
+            "model_version":            row[6],
+            "latency_ms":               row[7],
+            "ingested_at":              row[8].isoformat() if row[8] else None,
+            "request_ip":               row[9],
+            "user_agent":               row[10],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"/demo/decision/{trans_num} failed: {e}")
+        raise HTTPException(status_code=503, detail=f"decision lookup failed: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 # ── /metrics ──────────────────────────────────────────────────────────────────

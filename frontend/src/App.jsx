@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import MetricsBar    from './components/MetricsBar'
-import LiveFeed      from './components/LiveFeed'
-import FraudChart    from './components/FraudChart'
-import DemoResults   from './components/DemoResults'
-import MonitoringTab from './components/MonitoringTab'
-import DriftTab      from './components/DriftTab'
-import HealthTab     from './components/HealthTab'
-import AuditTab      from './components/AuditTab'
-import MLflowTab     from './components/MLflowTab'
+import MetricsBar  from './components/MetricsBar'
+import LiveFeed    from './components/LiveFeed'
+import FraudChart  from './components/FraudChart'
+import DemoResults from './components/DemoResults'
 
 const API  = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS   = import.meta.env.VITE_WS_URL  || 'ws://localhost:8000/ws'
@@ -15,13 +10,8 @@ const MAX_EVENTS    = 50
 const MAX_CHART_PTS = 60
 
 const TABS = [
-  { id: 'live',       label: '📊 Live' },
-  { id: 'demo',       label: '🧪 Demo' },
-  { id: 'monitoring', label: '📈 Monitoring' },
-  { id: 'drift',      label: '🌊 Drift' },
-  { id: 'health',     label: '❤️ Health' },
-  { id: 'audit',      label: '📜 Audit' },
-  { id: 'mlflow',     label: '🔗 MLflow' },
+  { id: 'live', label: '📊 Live' },
+  { id: 'demo', label: '🧪 Demo' },
 ]
 
 const EMPTY_METRICS = {
@@ -153,19 +143,13 @@ export default function App() {
                     Click <strong>▶ Run 100 Tests</strong> in the header to run
                     the demo. It samples 50 fraud + 50 legit rows from
                     <code>data/raw/fraudTest.csv</code>, scores them, and
-                    populates this tab + the audit log.
+                    populates this tab.
                   </p>
                 </div>
               )
             }
           </>
         )}
-
-        {tab === 'monitoring' && <MonitoringTab />}
-        {tab === 'drift'      && <DriftTab />}
-        {tab === 'health'     && <HealthTab />}
-        {tab === 'audit'      && <AuditTab />}
-        {tab === 'mlflow'     && <MLflowTab />}
       </div>
 
       <div className="status-bar">
