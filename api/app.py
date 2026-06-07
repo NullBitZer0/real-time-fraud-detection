@@ -276,7 +276,10 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     sample  = sample_100(n_fraud=req.n_fraud, n_legit=req.n_legit)
+    t0      = time.perf_counter()
     out     = pipeline.predict(sample)
+    batch_latency = (time.perf_counter() - t0) * 1000
+    avg_lat = batch_latency / len(out)
     stats   = request.app.state.stats
     manager = request.app.state.manager
     y_true  = out["is_fraud"].astype(int).values
@@ -290,7 +293,7 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
         action  = str(r["action"])
         pred    = int(tier >= 1)
         txn_id  = str(r["trans_num"])
-        lat_ms  = 0.0  # demo doesn't measure per-row latency
+        lat_ms  = avg_lat
 
         results.append(SingleTestResult(
             trans_num         = txn_id,
@@ -310,6 +313,7 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
         METRIC_PREDS_TOTAL.inc()
         if pred:
             METRIC_PREDS_FRAUD.inc()
+        METRIC_LATENCY.observe(lat_ms)
 
         try:
             insert_decision(
