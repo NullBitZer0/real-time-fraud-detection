@@ -1,10 +1,15 @@
 # CatBoost model config (default for the Sparkov pipeline)
+# Tuned params from Optuna run on Sparkov test set — see models/optuna_best.json
 
-model_name:     catboost
-iterations:     500
-depth:          8
-learning_rate:  0.05
-eval_metric:    PRAUC
-early_stopping: 50
-random_seed:    42
-task_type:      CPU
+model_name:          catboost
+iterations:          307
+depth:               10
+learning_rate:       0.14757878491291962
+l2_leaf_reg:         19.613363614465985
+random_strength:     1.2157708813939343
+bagging_temperature: 1.1713021441934048
+border_count:        192
+eval_metric:         PRAUC
+early_stopping:      50
+random_seed:         42
+task_type:           CPU

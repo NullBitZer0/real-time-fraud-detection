@@ -24,18 +24,37 @@ data:
     tier3_soft_signal:  0.0040
 
 model:
-  model_name:        catboost
-  iterations:        500
-  depth:             8
-  learning_rate:     0.05
-  eval_metric:       PRAUC
-  early_stopping:    50
-  random_seed:       42
+  model_name:          catboost
+  # Tuned CatBoost params (from Optuna on Sparkov val)
+  iterations:          307
+  depth:               10
+  learning_rate:       0.14757878491291962
+  l2_leaf_reg:         19.613363614465985
+  random_strength:     1.2157708813939343
+  bagging_temperature: 1.1713021441934048
+  border_count:        192
+  eval_metric:         PRAUC
+  early_stopping:      50
+  random_seed:         42
 
 optuna:
   enabled:           false        # deferred — run `dvc repro optuna_tune` separately
   n_trials:          20
   timeout_minutes:   0            # 0 = no timeout (rely on n_trials)
+
+mlflow:
+  # DAGsHub-backed tracking — the tracker derives owner/repo from this URL
+  # at runtime; env vars DAGSHUB_REPO_OWNER + DAGSHUB_REPO_NAME + DAGSHUB_TOKEN
+  # are required for the DAGsHub backend to work. Falls back to local mlruns/
+  # if DAGsHub is unreachable.
+  tracking_uri:      https://dagshub.com/NullBitZer0/real-time-fraud-detection.mlflow
+  experiment_name:   sparkov-fraud
+  run_name:          catboost-train
+  register_model:    true
+  registered_name:   FraudDetectionCatBoost
+
+inference:
+  decision_cache_ttl_seconds: 3600
 
 artifacts:
   model_dir:        models

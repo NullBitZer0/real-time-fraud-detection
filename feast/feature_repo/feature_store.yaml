@@ -1,20 +1,14 @@
 project: fraud_detection
 provider: local
+registry: /home/NullbitZer0/projects/real-time-fraud-detection/feast/feature_repo/data/registry.db
 
+# ── Offline store: file-based (DuckDB) — reads parquet directly ────────────
 offline_store:
-  type: postgres
-  host: localhost
-  port: 5432
-  database: feast
-  user: feast
-  password: feast
+  type: file
 
+# ── Online store: Redis (used at inference via get_online_features) ────────
 online_store:
   type: redis
   connection_string: localhost:6379
-
-registry:
-  registry_type: sql
-  path: postgresql+psycopg2://feast:feast@localhost:5432/feast
 
 entity_key_serialization_version: 3
