@@ -56,3 +56,6 @@ feature_store.db
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+
+catboost_info/
