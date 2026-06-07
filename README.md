@@ -72,6 +72,13 @@ are tracked on **DAGsHub MLflow**; CI/CD runs on **GitHub Actions**.
 ## Quick start
 
 ```bash
+# One command — bring up the full demo
+bash scripts/demo.sh
+```
+
+Or manually:
+
+```bash
 # 1. Start all infrastructure
 docker compose up -d postgres redis kafka prometheus grafana
 
@@ -87,6 +94,8 @@ cd frontend && npm install && npm run dev
 # 5. (Optional) Run the 100-test Kafka end-to-end demo
 python -m kf.test_100 --broker localhost:9094
 ```
+
+To stop: `bash scripts/demo-stop.sh`
 
 Then open:
 - `http://localhost:3000` — **Unified React dashboard** (7 tabs: Live, Demo, Monitoring, Drift, Health, Audit, MLflow)
