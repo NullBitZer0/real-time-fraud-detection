@@ -68,13 +68,14 @@ export default function App() {
   }, [])
   useEffect(() => { connect() }, [connect])
 
-  const runDemo = async () => {
+  const runDemo = async (n) => {
     setDemoBusy(true)
     try {
+      const nf = nl = n / 2
       const r = await fetch(`${API}/demo/run-100-tests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ n_fraud: 50, n_legit: 50 }),
+        body: JSON.stringify({ n_fraud: nf, n_legit: nl, include_results: n <= 100 }),
       })
       if (r.ok) {
         setDemoResult(await r.json())
@@ -94,10 +95,17 @@ export default function App() {
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
           <button
             className="run-demo-btn"
-            onClick={runDemo}
+            onClick={() => runDemo(100)}
             disabled={demoBusy}
           >
-            {demoBusy ? '⏳ Running…' : '▶ Run 100 Tests'}
+            {demoBusy ? '⏳ Running…' : '▶ Run 100'}
+          </button>
+          <button
+            className="run-demo-btn large"
+            onClick={() => runDemo(1000)}
+            disabled={demoBusy}
+          >
+            {demoBusy ? '⏳ Running…' : '▶ Run 1000'}
           </button>
           <div className="live-badge">
             <div className="live-dot" />
@@ -142,8 +150,10 @@ export default function App() {
                 <div className="card">
                   <span className="card-title">🧪 Demo Results</span>
                   <p className="monitoring-hint">
-                    Click <strong>▶ Run 100 Tests</strong> in the header to run
-                    the demo. It samples 50 fraud + 50 legit rows from
+                    Click <strong>▶ Run 100</strong> or <strong>▶ Run 1000</strong>
+                    in the header to run the demo. The 1000-test run shows
+                    summary only (top-100 detail table hidden).
+                    It samples evenly from
                     <code>data/raw/fraudTest.csv</code>, scores them, and
                     populates this tab.
                   </p>

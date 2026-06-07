@@ -9,10 +9,11 @@ export default function DemoResults({ result }) {
   if (!result) return null
 
   const [[tn, fp], [fn, tp]] = result.confusion_matrix
+  const hasDetail = result.results && result.results.length > 0
 
   return (
     <div className="card demo-results">
-      <span className="card-title">🧪 100-Test Demo Run Results</span>
+      <span className="card-title">🧪 Demo Run Results — {result.n_total} Tests</span>
 
       <div className="demo-summary">
         <div className="demo-stat">
@@ -54,39 +55,41 @@ export default function DemoResults({ result }) {
         })}
       </div>
 
-      <details>
-        <summary style={{ cursor: 'pointer', color: 'var(--muted)', fontSize: '12px' }}>
-          Show 100 individual results
-        </summary>
-        <div className="demo-table-wrap">
-          <table className="demo-table">
-            <thead>
-              <tr>
-                <th>txn</th><th>truth</th><th>tier</th><th>action</th>
-                <th>proba</th><th>amt</th><th>merchant</th><th>category</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.results.map(r => (
-                <tr key={r.trans_num} className={`tier-${r.tier}`}>
-                  <td className="mono">{r.trans_num.slice(0, 8)}…</td>
-                  <td>
-                    <span className={`truth-badge ${r.is_fraud ? 'fraud' : 'legit'}`}>
-                      {r.is_fraud ? 'FRAUD' : 'legit'}
-                    </span>
-                  </td>
-                  <td><span className={`tier-badge tier-${r.tier}`}>T{r.tier}</span></td>
-                  <td className="mono">{r.action}</td>
-                  <td>{(r.fraud_probability * 100).toFixed(2)}%</td>
-                  <td>${r.amt.toFixed(2)}</td>
-                  <td>{r.merchant}</td>
-                  <td>{r.category}</td>
+      {hasDetail && (
+        <details>
+          <summary style={{ cursor: 'pointer', color: 'var(--muted)', fontSize: '12px' }}>
+            Show {result.results.length} individual results
+          </summary>
+          <div className="demo-table-wrap">
+            <table className="demo-table">
+              <thead>
+                <tr>
+                  <th>txn</th><th>truth</th><th>tier</th><th>action</th>
+                  <th>proba</th><th>amt</th><th>merchant</th><th>category</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+              </thead>
+              <tbody>
+                {result.results.map(r => (
+                  <tr key={r.trans_num} className={`tier-${r.tier}`}>
+                    <td className="mono">{r.trans_num.slice(0, 8)}…</td>
+                    <td>
+                      <span className={`truth-badge ${r.is_fraud ? 'fraud' : 'legit'}`}>
+                        {r.is_fraud ? 'FRAUD' : 'legit'}
+                      </span>
+                    </td>
+                    <td><span className={`tier-badge tier-${r.tier}`}>T{r.tier}</span></td>
+                    <td className="mono">{r.action}</td>
+                    <td>{(r.fraud_probability * 100).toFixed(2)}%</td>
+                    <td>${r.amt.toFixed(2)}</td>
+                    <td>{r.merchant}</td>
+                    <td>{r.category}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
     </div>
   )
 }

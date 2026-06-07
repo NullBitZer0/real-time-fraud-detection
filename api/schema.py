@@ -61,9 +61,10 @@ class FraudResponse(BaseModel):
 
 # ── 100-test demo run ─────────────────────────────────────────────────────────
 class Run100TestsRequest(BaseModel):
-    """Body for POST /demo/run-100-tests — no fields, just triggers the run."""
-    n_fraud: int = Field(50, ge=0, le=100, description="How many fraud rows to include (0-100)")
-    n_legit: int = Field(50, ge=0, le=100, description="How many legit rows to include (0-100)")
+    """Body for POST /demo/run-100-tests — controls sample size and result detail."""
+    n_fraud:         int  = Field(50, ge=0, le=1000, description="How many fraud rows to include (0-1000)")
+    n_legit:         int  = Field(50, ge=0, le=1000, description="How many legit rows to include (0-1000)")
+    include_results: bool = Field(True, description="Return individual result rows (summary-only when False)")
 
 
 class SingleTestResult(BaseModel):

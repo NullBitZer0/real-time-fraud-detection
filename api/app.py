@@ -348,7 +348,7 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
         tier_thresholds = tier_thresholds,
         confusion_matrix = cm,
         macro_f1     = f1m,
-        results      = results,
+        results      = results if req.include_results else [],
     )
 
 
