@@ -52,7 +52,7 @@ services:
       - redisinsight:/data
     restart: unless-stopped
 
-  # ── Kafka (KRaft mode — no Zookeeper) ─────────────────────────────────────
+  # ── Kafka (KRaft) ─────────────────────────────────────
   kafka:
     image: apache/kafka:latest
     container_name: fraud-kafka
