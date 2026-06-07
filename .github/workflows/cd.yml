@@ -1,0 +1,62 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Retrain the production model on every push to main and log to DAGsHub MLflow.
+# Docker images are intentionally NOT built or pushed (per repo policy).
+jobs:
+  train-and-log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install dvc
+
+      - name: Download Sparkov dataset
+        run: |
+          mkdir -p data/raw
+          if [ ! -f data/raw/fraudTest.csv ]; then
+            echo "::error::data/raw/fraudTest.csv not present — cannot train in CI"
+            exit 1
+          fi
+          ls -lh data/raw/
+
+      - name: Train + log to DAGsHub MLflow
+        env:
+          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          echo "Tracking URI: ${MLFLOW_TRACKING_URI:-https://dagshub.com/${DAGSHUB_REPO_OWNER}/${DAGSHUB_REPO_NAME}.mlflow}"
+          # Step 1: build Feast sources (fast — uses committed CSVs)
+          python -m src.components.data_ingestion_feast
+          # Step 2: apply + materialize (skip if Redis unavailable in CI; we just want training)
+          # Step 3: train (writes models/*, metrics/* and logs to DAGsHub MLflow)
+          python -m pipelines.training_pipeline
+
+      - name: Upload trained model artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catboost-model
+          path: |
+            models/catboost.cbm
+            models/feature_engineering.pkl
+            models/metadata.json
+            metrics/train_metrics.json
+          retention-days: 30

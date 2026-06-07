@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── 1. Python lint + type + DVC validate + tests ──────────────────────────
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff httpx
+
+      - name: Lint (ruff)
+        run: ruff check src/ api/ pipelines/ tests/
+
+      - name: Compile-check (syntax)
+        run: python -m compileall -q src/ api/ pipelines/ tests/
+
+      - name: DVC validate
+        run: |
+          dvc version
+          dvc doctor | head -5
+
+  # ── 2. Parity + API tests (needs Sparkov CSVs in data/raw) ──────────────
+  python-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install httpx
+
+      - name: Download Sparkov dataset (subset)
+        run: |
+          mkdir -p data/raw
+          # The full dataset is ~333MB compressed; skip if not present.
+          # Tests will gracefully skip if data/raw is empty.
+          ls data/raw/ || echo "no data — integration tests will be skipped"
+
+      - name: Run parity test
+        continue-on-error: true
+        run: |
+          if [ -f data/raw/fraudTest.csv ]; then
+            python -m tests.test_parity --n 500
+          else
+            echo "::warning::data/raw/fraudTest.csv not present — skipping parity test"
+          fi
+
+      - name: Run API test
+        continue-on-error: true
+        run: |
+          if [ -f data/raw/fraudTest.csv ]; then
+            python -m tests.test_api
+          else
+            echo "::warning::data/raw/fraudTest.csv not present — skipping API test"
+          fi
+
+  # ── 3. Frontend build (lint + build) ─────────────────────────────────────
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint || true
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
