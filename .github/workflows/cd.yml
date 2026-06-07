@@ -93,7 +93,7 @@ jobs:
 
       - name: Upload trained artifacts
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: catboost-model
           path: |
