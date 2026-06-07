@@ -119,10 +119,44 @@ Useful commands:
 ```bash
 dvc repro                     # run all stages
 dvc repro train               # run only train
+dvc repro drift_report        # Evidently HTML drift report
+dvc repro promote             # Staging → Production (with metric gate)
 dvc repro optuna_tune -f      # force Optuna tuning
 dvc metrics show              # show test_pr_auc, f1@T2, etc.
 dvc dag                       # show pipeline graph
+dvc push                      # push parquet + model artifacts to DAGsHub S3
 ```
+
+The full DVC DAG:
+
+```
+ingest_postgres ─► feast_ingest ─► train ─► promote
+                       │                            ▲
+                       ├─► drift_report             │ (metric gate)
+                       └─► feast_apply ─► feast_materialize
+```
+
+---
+
+## Production-style features
+
+This isn't a notebook prototype — it's structured to demonstrate the
+operating concerns a real ML platform needs:
+
+| Concern | Implementation | Where to look |
+|---|---|---|
+| **Versioned data** | DVC remote = DAGsHub S3 (`s3://dvc` → `dagshub.com/.../s3`) | `.dvc/config`, `dvc push` |
+| **Versioned model** | MLflow Model Registry on DAGsHub (Staging → Production) | `src/components/mlflow_tracking.py`, `mlflow_promote.py` |
+| **Reproducible training** | Tuned params pinned in `params.yaml`, `random_seed=42`, locked deps | `params.yaml`, `requirements.txt` |
+| **Schema contracts** | Pandera validates the 14-field input and 32-feature batch | `src/components/schema_validation.py` |
+| **Audit log** | Every `/predict` writes to `fraud_detection.decision_log` (Postgres) | `src/components/audit_log.py` |
+| **Drift monitoring** | Evidently HTML + JSON report (train vs test) | `src/components/drift_report.py` → `metrics/drift_report.html` |
+| **Metric-gated promotion** | CD fails if `test_pr_auc < 0.78` | `.github/workflows/cd.yml` |
+| **Rollback** | Manual workflow that moves Staging → Production | `.github/workflows/rollback.yml` |
+| **Readiness probe** | `/readyz` checks model + Redis + Postgres + Feast | `api/app.py:readyz` |
+| **Observability** | Prometheus `/metrics/prom` + Grafana dashboard | `api/app.py`, `monitoring/grafana_dashboard.json` |
+| **Structured logs** | JSON logs (timestamp, level, name, run_id) — drop-in for ELK | `src/utils/logger.py` |
+| **Containerized** | Multi-stage `Dockerfile`, served via `docker compose up api` | `Dockerfile`, `docker-compose.yml` |
 
 ---
 
@@ -156,14 +190,71 @@ mlflow ui  # open http://localhost:5000
 | Workflow | File | Trigger | Does |
 |---|---|---|---|
 | **CI** | `.github/workflows/ci.yml` | push / PR to `main` | lint Python + compile-check + frontend build |
-| **CD** | `.github/workflows/cd.yml` | push to `main` | retrain model + log to DAGsHub MLflow + upload artifact |
+| **CD** | `.github/workflows/cd.yml` | push to `main` | retrain + drift report + metric gate (PR-AUC ≥ 0.78) + promote Staging→Production + upload artifact |
+| **Rollback** | `.github/workflows/rollback.yml` | manual (`workflow_dispatch`) | moves Staging → Production, archives the old version, writes a `rollback_log.json` audit record |
 | **Dependabot** | `.github/dependabot.yml` | weekly | bumps Python, npm, and GitHub-Actions versions |
 
 Docker images are intentionally **not** built/pushed in CD (per repo policy).
-The trained model is uploaded as a GitHub Actions artifact (30-day retention).
+The trained model + drift report are uploaded as a GitHub Actions artifact
+(30-day retention).
 
-To enable CD, set these **GitHub repo secrets**: `DAGSHUB_REPO_OWNER`,
-`DAGSHUB_REPO_NAME`, `DAGSHUB_TOKEN`, `MLFLOW_TRACKING_URI`.
+Required **GitHub repo secrets**: `DAGSHUB_REPO_OWNER`, `DAGSHUB_REPO_NAME`,
+`DAGSHUB_TOKEN`, `MLFLOW_TRACKING_URI`.
+
+---
+
+## Observability
+
+- **Structured JSON logs**: every record is one JSON line (timestamp, level, name, message, run_id). Set `LOG_FORMAT=plain` for human-readable dev output.
+- **Prometheus metrics**: `GET /metrics/prom` returns:
+  - `fraud_predictions_total` (counter)
+  - `fraud_predictions_fraud_total` (counter — tier ≥ 1)
+  - `fraud_prediction_latency_ms` (histogram)
+- **Grafana dashboard**: `monitoring/grafana_dashboard.json` (4 panels: totals, fraud rate, p50/p95/p99 latency, throughput). Mounted automatically by the Grafana container.
+- **Readiness probe**: `GET /readyz` returns 200 only if model + Postgres are reachable (Redis + Feast are reported but not blocking).
+
+Spin up the full observability stack:
+
+```bash
+docker compose up -d prometheus grafana
+# open http://localhost:3001 (admin/admin) → Dashboards → Real-Time Fraud Detection
+```
+
+---
+
+## Audit log
+
+Every `/predict` call writes a row to `fraud_detection.decision_log` (Postgres).
+Schema:
+
+| Column | Type | Description |
+|---|---|---|
+| `trans_num` | TEXT | Transaction ID |
+| `fraud_probability` | DOUBLE PRECISION | Model output (0–1) |
+| `tier` | SMALLINT | 0=approve, 3=soft_signal, 2=review_queue, 1=auto_block |
+| `action` | TEXT | "approve" / "soft_signal" / "review_queue" / "auto_block" |
+| `threshold_used` | DOUBLE PRECISION | Tier boundary hit |
+| `is_fraud_ground_truth` | SMALLINT NULL | Backfilled from `raw_transactions` for the 100-test demo |
+| `model_run_id` | TEXT | MLflow run that produced the model |
+| `latency_ms` | DOUBLE PRECISION | End-to-end `/predict` latency |
+| `ingested_at` | TIMESTAMPTZ | When the decision was made |
+| `request_ip`, `user_agent` | TEXT | Caller metadata |
+
+Useful queries:
+
+```sql
+-- How many decisions did each tier in the last hour?
+SELECT tier, COUNT(*) FROM fraud_detection.decision_log
+WHERE ingested_at > now() - interval '1 hour'
+GROUP BY tier ORDER BY tier;
+
+-- Backfill ground truth after a batch test
+UPDATE fraud_detection.decision_log d
+SET    is_fraud_ground_truth = r.is_fraud
+FROM   fraud_detection.raw_transactions r
+WHERE  d.trans_num = r.trans_num
+  AND  d.is_fraud_ground_truth IS NULL;
+```
 
 ---
 
