@@ -29,4 +29,3 @@ feast[postgres,redis]
 psycopg2-binary
 redis
 flaml
-optuna-integration[lightgbm]
