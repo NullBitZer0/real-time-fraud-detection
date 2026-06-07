@@ -3,6 +3,7 @@ import MetricsBar  from './components/MetricsBar'
 import LiveFeed    from './components/LiveFeed'
 import FraudChart  from './components/FraudChart'
 import DemoResults from './components/DemoResults'
+import DriftTab    from './components/DriftTab'
 
 const API  = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS   = import.meta.env.VITE_WS_URL  || 'ws://localhost:8000/ws'
@@ -12,6 +13,7 @@ const MAX_CHART_PTS = 60
 const TABS = [
   { id: 'live', label: '📊 Live' },
   { id: 'demo', label: '🧪 Demo' },
+  { id: 'drift', label: '🌊 Drift' },
 ]
 
 const EMPTY_METRICS = {
@@ -150,6 +152,8 @@ export default function App() {
             }
           </>
         )}
+
+        {tab === 'drift' && <DriftTab />}
       </div>
 
       <div className="status-bar">

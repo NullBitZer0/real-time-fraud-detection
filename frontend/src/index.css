@@ -278,10 +278,27 @@ body {
 }
 .tab-content { min-height: 60vh; }
 
+/* ── Drift tab ────────────────────────────────────────────────────────────── */
+.drift-card { padding: 0; overflow: hidden; }
+.drift-iframe {
+  width: 100%; height: 80vh; min-height: 700px;
+  border: 0; background: #fff;
+}
 .monitoring-hint { color: var(--muted); font-size: 12px; flex: 1 1 auto; }
 .monitoring-hint code {
   background: var(--surface2); padding: 1px 6px; border-radius: 4px;
   font-size: 11px; color: var(--accent);
+}
+.monitoring-bar {
+  display: flex; gap: 12px; align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.run-demo-btn.small { padding: 6px 12px; font-size: 11px; }
+.run-demo-btn.secondary {
+  background: var(--surface2);
+  color: var(--text);
 }
 .tier-badge {
   display: inline-block; padding: 1px 8px; border-radius: 4px;
@@ -291,10 +308,6 @@ body {
 .tier-badge.tier-1 { background: #dc262620; color: var(--critical); }
 .tier-badge.tier-2 { background: #f59e0b20; color: var(--warning); }
 .tier-badge.tier-3 { background: #eab30820; color: #eab308; }
-.run-demo-btn.secondary {
-  background: var(--surface2);
-  color: var(--text);
-}
 
 @media (max-width: 900px) {
   .metrics-bar { grid-template-columns: repeat(2, 1fr); }
