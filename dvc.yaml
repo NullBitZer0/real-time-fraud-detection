@@ -1,34 +1,111 @@
+# DVC pipeline for the Sparkov fraud-detection project.
+# Run with: dvc repro
+# Optuna is a separate, optional stage: dvc repro optuna_tune
+
 stages:
-  ingest:
-    cmd: python pipelines/ingest_pipeline.py
+  # ── 1. Load raw CSVs into Postgres ────────────────────────────────────────
+  ingest_postgres:
+    desc: "Load fraudTrain.csv + fraudTest.csv → fraud_detection.raw_transactions"
+    cmd: python -m src.components.data_ingestion_postgres
     deps:
-    - data/raw/creditcard.csv
-    - pipelines/ingest_pipeline.py
-    - src/components/data_ingestion.py
-    outs:
-    - artifacts/test.csv
-    - artifacts/train.csv
-  preprocess:
-    cmd: python pipelines/preprocess_pipeline.py
+      - data/raw/fraudTrain.csv
+      - data/raw/fraudTest.csv
+      - src/components/data_ingestion_postgres.py
+    # No `outs` (Postgres table) — DVC re-runs whenever the CSVs change.
+    always_changed: true
+
+  # ── 2. Build Feast parquet sources from the CSVs ──────────────────────────
+  feast_ingest:
+    desc: "Build sparkov_{cc,merchant,transaction}_features.parquet"
+    cmd: python -m src.components.data_ingestion_feast
     deps:
-    - artifacts/test.csv
-    - artifacts/train.csv
-    - pipelines/preprocess_pipeline.py
-    - src/components/feature_engineering.py
-    - src/components/preprocessing.py
+      - data/raw/fraudTrain.csv
+      - data/raw/fraudTest.csv
+      - src/components/feature_engineering.py
+      - src/components/data_ingestion_feast.py
     outs:
-    - artifacts/test_processed.csv
-    - artifacts/train_processed.csv
+      - data/sparkov_cc_features.parquet
+      - data/sparkov_merchant_features.parquet
+      - data/sparkov_transaction_features.parquet
+
+  # ── 3. Apply Feast entity + feature-view definitions ─────────────────────
+  feast_apply:
+    desc: "Register Feast entities + feature views"
+    cmd: cd feast/feature_repo && feast apply
+    deps:
+      - feast/feature_repo/feature_store.yaml
+      - feast/feature_repo/features.py
+    outs:
+      - feast/feature_repo/data/registry.db
+    always_changed: true
+
+  # ── 4. Materialize online features (Postgres → Redis) ─────────────────────
+  feast_materialize:
+    desc: "Materialize cc_num_features + merchant_features → Redis"
+    cmd: >-
+      cd feast/feature_repo
+      && feast materialize
+      -v cc_num_features -v merchant_features
+      "2019-01-01T00:00:00" "2021-01-01T00:00:00"
+    deps:
+      - feast/feature_repo/data/registry.db
+    always_changed: true
+
+  # ── 5. Train CatBoost model (main pipeline) ──────────────────────────────
   train:
-    cmd: python pipelines/training_pipeline.py
+    desc: "Train CatBoost (tuned params) + 3-tier analysis + MLflow logging"
+    cmd: python -m pipelines.training_pipeline
     deps:
-    - artifacts/test_processed.csv
-    - artifacts/train_processed.csv
-    - pipelines/training_pipeline.py
-    - src/components/model_training.py
+      - data/sparkov_cc_features.parquet
+      - data/sparkov_merchant_features.parquet
+      - data/sparkov_transaction_features.parquet
+      - pipelines/training_pipeline.py
+      - src/components/feature_engineering.py
+      - src/components/model_training.py
+      - src/components/model_evaluation.py
+      - src/components/data_validation.py
+      - src/components/mlflow_tracking.py
+      - configs/config.yaml
     params:
-    - model.learning_rate
-    - model.max_depth
-    - model.n_estimators
+      - model.iterations
+      - model.depth
+      - model.learning_rate
+      - model.l2_leaf_reg
+      - model.random_strength
+      - model.bagging_temperature
+      - model.border_count
+      - model.early_stopping
+      - model.eval_metric
+      - model.random_seed
+      - data.val_quantile
+      - mlflow.experiment_name
+      - mlflow.run_name
+      - mlflow.register_model
+      - mlflow.registered_name
     outs:
-    - models/model.pkl
+      - models/catboost.cbm:
+          cache: false
+      - models/feature_engineering.pkl:
+          cache: false
+      - models/metadata.json:
+          cache: false
+    metrics:
+      - metrics/train_metrics.json:
+          cache: false
+
+  # ── 6. (Optional) Optuna tuning — separate stage, run on demand ───────────
+  optuna_tune:
+    desc: "Optional hyperparameter search via Optuna (run separately)"
+    cmd: python -m src.components.optuna_tuning --out models/optuna_best.json
+    deps:
+      - data/sparkov_transaction_features.parquet
+      - src/components/feature_engineering.py
+      - src/components/optuna_tuning.py
+      - configs/config.yaml
+    params:
+      - optuna.n_trials
+      - optuna.timeout_minutes
+    outs:
+      - models/optuna_best.json:
+          cache: false
+    always_changed: true

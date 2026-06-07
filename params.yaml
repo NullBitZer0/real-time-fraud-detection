@@ -1,23 +1,54 @@
-# Sparkov fraud-detection pipeline params
-# Switched from IBM creditcard.csv to Sparkov (fraudTrain/fraudTest.csv) and
-# from LightGBM to CatBoost baseline. See notebooks/features.ipynb for the
-# research notebook and src/components/ for the production code.
-
 model:
-  model_name:      catboost       # was: lightgbm
+  model_name:        catboost       # was: lightgbm (legacy IBM)
 
-  # ── CatBoost baseline (test PR-AUC ~0.88 on Sparkov) ──────────────────────
-  iterations:      500
-  depth:           8
-  learning_rate:   0.05
-  eval_metric:     PRAUC
-  early_stopping:  50
-  random_seed:     42
-  task_type:       CPU
+  # ── CatBoost tuned (from Optuna on Sparkov val) ────────────────────────────
+  iterations:           307
+  depth:                10
+  learning_rate:        0.14757878491291962
+  l2_leaf_reg:          19.613363614465985
+  random_strength:      1.2157708813939343
+  bagging_temperature:  1.1713021441934048
+  border_count:         192
+  eval_metric:          PRAUC
+  early_stopping:       50
+  random_seed:          42
+  task_type:            CPU
 
 data:
-  train_path:    data/raw/fraudTrain.csv
-  test_path:     data/raw/fraudTest.csv
-  val_quantile:  0.80        # last 20% of fraudTrain as val
-  target_column: is_fraud
-  inference_threshold: 0.1198  # F2-optimal (Tier 2 review queue)
+  # Training data source: "postgres" (fraud_detection.raw_transactions) or "csv"
+  source:               postgres
+  # Input files (only used when source=csv)
+  train_path:           data/raw/fraudTrain.csv
+  test_path:            data/raw/fraudTest.csv
+  # Output artifacts
+  out_train:            artifacts/sparkov_train.csv
+  out_val:              artifacts/sparkov_val.csv
+  out_test:             artifacts/sparkov_test.csv
+  # Time-based split
+  val_quantile:         0.80        # last 20% of fraudTrain -> val
+  # Target
+  target_column:        is_fraud
+  # 3-tier thresholds (from notebooks/experiments.ipynb OOF run)
+  tier_thresholds:
+    tier1_auto_block:    0.5613
+    tier2_review_queue:  0.1198
+    tier3_soft_signal:   0.0040
+
+mlflow:
+  # DAGsHub-backed tracking — the tracker derives owner/repo from this URL
+  # at runtime; env vars DAGSHUB_REPO_OWNER + DAGSHUB_REPO_NAME + DAGSHUB_TOKEN
+  # are required for the DAGsHub backend to work. Falls back to local mlruns/
+  # if DAGsHub is unreachable.
+  tracking_uri:    https://dagshub.com/NullBitZer0/real-time-fraud-detection.mlflow
+  experiment_name: sparkov-fraud
+  run_name:        catboost-train
+  register_model:  true           # push to MLflow registry (Staging stage)
+  registered_name: FraudDetectionCatBoost
+
+optuna:
+  enabled:           false        # deferred — run `dvc repro optuna_tune` separately
+  n_trials:          20
+  timeout_minutes:   0            # 0 = no timeout (rely on n_trials)
+
+inference:
+  decision_cache_ttl_seconds: 3600   # Redis TTL for /demo/decision/{trans_num}
