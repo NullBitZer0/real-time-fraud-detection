@@ -6,7 +6,14 @@ on:
   workflow_dispatch:
 
 # Retrain the production model on every push to main and log to DAGsHub MLflow.
-# Docker images are intentionally NOT built or pushed (per repo policy).
+# Steps:
+#   1. Install deps
+#   2. Build Feast parquet sources (no Postgres needed)
+#   3. Train (emits metrics/train_metrics.json)
+#   4. METRIC GATE: fail if test_pr_auc < 0.78 (refuse to promote a regressed model)
+#   5. Promote Staging → Production (gated by metric + comparison vs current Production)
+#   6. Upload model + metrics + drift report as a GitHub Actions artifact
+# Docker images are intentionally NOT built/pushed (per repo policy).
 jobs:
   train-and-log:
     runs-on: ubuntu-latest
@@ -24,7 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install dvc
+          pip install dvc pandera prometheus-client evidently
 
       - name: Download Sparkov dataset
         run: |
@@ -35,21 +42,56 @@ jobs:
           fi
           ls -lh data/raw/
 
+      - name: Build Feast parquet sources
+        run: python -m src.components.data_ingestion_feast
+
       - name: Train + log to DAGsHub MLflow
+        env:
+          DAGSHUB_REPO_OWNER:   ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:    ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:        ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI:  ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          echo "Tracking URI: ${MLFLOW_TRACKING_URI:-https://dagshub.com/${DAGSHUB_REPO_OWNER}/${DAGSHUB_REPO_NAME}.mlflow}"
+          python -m pipelines.training_pipeline
+
+      - name: Generate drift report
         env:
           DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
           DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
           DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         run: |
-          echo "Tracking URI: ${MLFLOW_TRACKING_URI:-https://dagshub.com/${DAGSHUB_REPO_OWNER}/${DAGSHUB_REPO_NAME}.mlflow}"
-          # Step 1: build Feast sources (fast — uses committed CSVs)
-          python -m src.components.data_ingestion_feast
-          # Step 2: apply + materialize (skip if Redis unavailable in CI; we just want training)
-          # Step 3: train (writes models/*, metrics/* and logs to DAGsHub MLflow)
-          python -m pipelines.training_pipeline
+          python -m src.components.drift_report
 
-      - name: Upload trained model artifact
+      - name: Metric gate (refuse to promote if PR-AUC < 0.78)
+        env:
+          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          with open("metrics/train_metrics.json") as f:
+              m = json.load(f)
+          pr = float(m.get("test_pr_auc", 0.0))
+          floor = 0.78
+          print(f"test_pr_auc = {pr:.4f}  (floor = {floor})")
+          if pr < floor:
+              print(f"::error::REJECTED: test_pr_auc {pr:.4f} < floor {floor}")
+              sys.exit(1)
+          print("✓ Metric gate passed")
+          PY
+
+      - name: Promote Staging → Production
+        if: success()
+        env:
+          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          python -m src.components.mlflow_promote --floor 0.78
+
+      - name: Upload trained artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -58,5 +100,8 @@ jobs:
             models/catboost.cbm
             models/feature_engineering.pkl
             models/metadata.json
+            models/production_alias.json
             metrics/train_metrics.json
+            metrics/drift_report.html
+            metrics/drift_report.json
           retention-days: 30

@@ -1,0 +1,98 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for rollback (audit log entry)'
+        required: true
+        default: 'manual rollback via workflow_dispatch'
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mlflow dagshub==0.7.0
+
+      - name: Rollback Production → Staging
+        env:
+          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, sys, mlflow, dagshub
+          from mlflow.tracking import MlflowClient
+
+          NAME = "FraudDetectionCatBoost"
+          dagshub.init(
+              repo_owner=os.environ["DAGSHUB_REPO_OWNER"],
+              repo_name =os.environ["DAGSHUB_REPO_NAME"],
+              mlflow=True,
+          )
+          client = MlflowClient()
+          versions = client.search_model_versions(f"name='{NAME}'")
+          # DAGsHub: only the legacy stage field is reliable
+          prod  = [v for v in versions if v.current_stage == "Production"]
+          staging = [v for v in versions if v.current_stage == "Staging"]
+
+          if not prod:
+              print("No Production version — nothing to roll back")
+              sys.exit(0)
+          if not staging:
+              print("ERROR: no Staging version to roll back to")
+              sys.exit(1)
+
+          prod_v   = max(prod,   key=lambda v: int(v.version))
+          staging_v = max(staging, key=lambda v: int(v.version))
+          print(f"Rolling back: Production v{prod_v.version} → Staging v{staging_v.version}")
+
+          # Move current Production → Archived
+          client.transition_model_version_stage(
+              NAME, prod_v.version, "Archived", archive_existing_versions=False,
+          )
+          # Promote Staging → Production
+          client.transition_model_version_stage(
+              NAME, staging_v.version, "Production", archive_existing_versions=True,
+          )
+
+          # Audit log
+          run = client.get_run(staging_v.run_id)
+          metrics = run.data.metrics
+          print(f"Rollback complete — Production is now v{staging_v.version} (test_pr_auc={metrics.get('test_pr_auc'):.4f})")
+          PY
+
+      - name: Write rollback record to metrics
+        env:
+          REASON: ${{ github.event.inputs.reason }}
+        run: |
+          mkdir -p metrics
+          cat > metrics/rollback_log.json <<EOF
+          {
+            "timestamp":    "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "actor":        "${{ github.actor }}",
+            "reason":       "$REASON",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+          cat metrics/rollback_log.json
+
+      - name: Commit rollback record
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add metrics/rollback_log.json
+          git commit -m "rollback: ${{ github.event.inputs.reason }}" || echo "no changes to commit"
+          git push
