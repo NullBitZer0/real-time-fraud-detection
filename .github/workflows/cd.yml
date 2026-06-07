@@ -66,8 +66,11 @@ jobs:
   trigger-airflow:
     # Optionally trigger an Airflow DAG run on a deployed Airflow host
     # (e.g. the demo VM). Gated by an `AIRFLOW_*` secrets — skip if absent.
+    # NOTE: the `env` context is not available in job-level `if` expressions
+    # in GitHub Actions, so the AIRFLOW_URL presence check has to live on
+    # the step, not on the job.
     needs: lint-and-test
-    if: github.event_name == 'workflow_dispatch' && env.AIRFLOW_URL != ''
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -76,6 +79,7 @@ jobs:
       AIRFLOW_PASSWORD:   ${{ secrets.AIRFLOW_PASSWORD   || '' }}
     steps:
       - name: Trigger fraud_retraining DAG
+        if: env.AIRFLOW_URL != ''
         run: |
           if [[ -z "$AIRFLOW_URL" ]]; then
             echo "AIRFLOW_URL not configured — skipping Airflow trigger"
