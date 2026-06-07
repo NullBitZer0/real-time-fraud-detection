@@ -71,11 +71,11 @@ export default function App() {
   const runDemo = async (n) => {
     setDemoBusy(true)
     try {
-      const nf = nl = n / 2
+      const half = n / 2
       const r = await fetch(`${API}/demo/run-100-tests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ n_fraud: nf, n_legit: nl, include_results: n <= 100 }),
+        body: JSON.stringify({ n_fraud: half, n_legit: half, include_results: n <= 100 }),
       })
       if (r.ok) {
         setDemoResult(await r.json())
