@@ -160,7 +160,7 @@ export default function App() {
         <div className={`status-dot ${wsStatus}`} />
         <span>WebSocket: {wsStatus}</span>
         <span style={{ marginLeft: 'auto' }}>
-          API: {API} · T2 threshold: 0.1198 · Model: CatBoost v3 (PR-AUC 0.8384)
+          API: {API} · T2: 0.1198 · Model: v3 (PR-AUC 0.8384)
         </span>
       </div>
     </div>

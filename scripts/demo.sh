@@ -25,7 +25,11 @@ echo ""
 
 # ── 1. Docker infrastructure (idempotent — no-op if already up) ───────────────
 echo "▶ Starting docker infrastructure (postgres, redis, kafka, prometheus, grafana)…"
-# Pipe to tail so non-zero exit (e.g. port conflict) doesn't abort the script
+# Kill stale containers first, then recreate fresh ones
+# This handles "container name already in use" errors from previous runs
+for c in fraud-postgres fraud-redis fraud-kafka fraud-prometheus fraud-grafana; do
+  docker rm -f "$c" 2>/dev/null || true
+done
 docker compose up -d postgres redis kafka prometheus grafana 2>&1 | tail -5 || true
 
 # ── 2. Load secrets (DAGsHub, Postgres, Redis) ────────────────────────────────
@@ -81,7 +85,7 @@ cat <<'EOF'
 ╔══════════════════════════════════════════════════════════════╗
 ║                ✅  DEMO IS READY                             ║
 ╠══════════════════════════════════════════════════════════════╣
-║  🌐  React dashboard (7 tabs)   http://localhost:3000        ║
+║  🌐  React dashboard (3 tabs)   http://localhost:3000        ║
 ║  📡  FastAPI + Swagger          http://localhost:8000/docs   ║
 ║  ❤️  Health / readiness probe    http://localhost:8000/readyz ║
 ║  📈  Prometheus metrics         http://localhost:8000/metrics║
