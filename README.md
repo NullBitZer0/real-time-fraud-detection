@@ -9,12 +9,10 @@ End-to-end demo: trains a fraud-detection model on the **Sparkov** dataset
 (`fraudTrain.csv` / `fraudTest.csv`), serves it via a **FastAPI** + **CatBoost**
 inference pipeline, fetches online features from a **Feast** feature store
 (Redis online + file/DuckDB offline), and streams 100-test demo runs
-through **Kafka** (KRaft mode, no Zookeeper). Experiments + model registry
+through **Kafka** (KRaft). Experiments + model registry
 are tracked on **DAGsHub MLflow**; CI/CD runs on **GitHub Actions**.
 
-> **Demo only.** The pipeline is simplified — no periodic retraining, no
-> heavy tests, no production-grade monitoring. All 4 user-visible
-> components (DBs, feature store, broker, model) start with `docker compose up`.
+> **Next Updates.** Add airflow as a orchastrator —  periodic retraining , production-grade monitoring woth promethus and grafana.also add drift detection with evidently.ETL also will with spark
 
 ---
 
