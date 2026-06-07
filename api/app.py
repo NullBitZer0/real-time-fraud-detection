@@ -275,32 +275,67 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    sample = sample_100(n_fraud=req.n_fraud, n_legit=req.n_legit)
-    out    = pipeline.predict(sample)
-    y_true = out["is_fraud"].astype(int).values
-
-    # Predictions for the confusion matrix: any tier >= 1 = flagged
-    # (T1 auto_block, T2 review_queue, T3 soft_signal all count as "fraud detected")
-    y_pred = (out["tier"] >= 1).astype(int).values
+    sample  = sample_100(n_fraud=req.n_fraud, n_legit=req.n_legit)
+    out     = pipeline.predict(sample)
+    stats   = request.app.state.stats
+    manager = request.app.state.manager
+    y_true  = out["is_fraud"].astype(int).values
 
     tier_thresholds = pipeline.tier_thresholds
+
+    results = []
+    for _, r in out.iterrows():
+        proba   = float(r["proba"])
+        tier    = int(r["tier"])
+        action  = str(r["action"])
+        pred    = int(tier >= 1)
+        txn_id  = str(r["trans_num"])
+        lat_ms  = 0.0  # demo doesn't measure per-row latency
+
+        results.append(SingleTestResult(
+            trans_num         = txn_id,
+            is_fraud          = int(r["is_fraud"]),
+            fraud_probability = proba,
+            fraud_prediction  = pred,
+            tier              = tier,
+            action            = action,
+            amt               = float(r["amt"]),
+            merchant          = str(r["merchant"]),
+            category          = str(r["category"]),
+        ))
+
+        # Record for Live tab / Prometheus / audit log (same as /predict)
+        stats["total"] += 1
+        stats["fraud"] += pred
+        METRIC_PREDS_TOTAL.inc()
+        if pred:
+            METRIC_PREDS_FRAUD.inc()
+
+        try:
+            insert_decision(
+                trans_num=txn_id, proba=proba, tier=tier, action=action,
+                threshold=float(r["threshold"]), latency_ms=lat_ms,
+                request_ip=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+        except Exception as e:
+            logging.warning(f"audit_log insert failed for {txn_id}: {e}")
+
+        # Broadcast each prediction to the Live tab via WebSocket
+        await manager.broadcast({
+            "transaction_id":    txn_id,
+            "fraud_probability": round(proba, 4),
+            "fraud_prediction":  pred,
+            "tier":              tier,
+            "action":            action,
+            "threshold_used":    float(r["threshold"]),
+            "latency_ms":        lat_ms,
+        })
+
+    # Confusion matrix + F1 (all tier >= 1 = flagged)
+    y_pred = (out["tier"] >= 1).astype(int).values
     cm  = confusion_matrix(y_true, y_pred).tolist()
     f1m = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
-
-    results = [
-        SingleTestResult(
-            trans_num         = str(r["trans_num"]),
-            is_fraud          = int (r["is_fraud"]),
-            fraud_probability = float(r["proba"]),
-            fraud_prediction  = int (r["tier"] >= 1),
-            tier              = int (r["tier"]),
-            action            = str (r["action"]),
-            amt               = float(r["amt"]),
-            merchant          = str (r["merchant"]),
-            category          = str (r["category"]),
-        )
-        for _, r in out.iterrows()
-    ]
 
     return Run100TestsResponse(
         n_total      = len(out),
