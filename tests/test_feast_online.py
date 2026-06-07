@@ -8,10 +8,11 @@ Run:
     python -m tests.test_feast_online
 """
 import sys
+
 import pandas as pd
 
-from src.components.feature_store      import FeatureStoreClient
-from src.components.data_ingestion     import read_sparkov_split
+from src.components.data_ingestion import read_sparkov_split
+from src.components.feature_store import FeatureStoreClient
 
 
 def main():

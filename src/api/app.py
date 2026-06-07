@@ -1,8 +1,10 @@
-import sys, random, math
+import random
+import sys
 from pathlib import Path
+
 import pandas as pd
 from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))

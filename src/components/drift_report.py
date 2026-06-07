@@ -10,10 +10,11 @@ Run:
 """
 import os
 import sys
+
 import pandas as pd
 
-from src.utils.logger    import logging
 from src.utils.exception import CustomException
+from src.utils.logger import logging
 
 
 def _short_name(x: str) -> str:
@@ -51,7 +52,7 @@ def main(
         cur_small["merchant"] = cur_small["merchant"].apply(_short_name)
 
         # Generate the report
-        from evidently import Dataset, DataDefinition, Report
+        from evidently import DataDefinition, Dataset, Report
         from evidently.presets import DataDriftPreset
 
         dd = DataDefinition(

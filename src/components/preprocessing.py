@@ -4,11 +4,8 @@ The CatBoost model works on raw engineered features, so there is no
 scaling/imputation/encoding here. The module exists for symmetry with
 the legacy pipeline and as a future extension point.
 """
-import sys
-import pandas as pd
 
 from src.utils.logger import logging
-from src.utils.exception import CustomException
 
 
 class DataPreprocessing:

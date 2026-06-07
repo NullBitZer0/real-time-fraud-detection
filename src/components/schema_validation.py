@@ -13,12 +13,14 @@ Two schemas:
     - ModelInputSchema      : the 32 engineered features the model sees
 """
 import sys
+
+import joblib
 import pandas as pd
 import pandera.pandas as pa
-from pandera import Check, Field
+from pandera import Field
 
-from src.utils.logger    import logging
 from src.utils.exception import CustomException
+from src.utils.logger import logging
 
 
 # ── Raw transaction input (the 14 fields coming from the API) ────────────────

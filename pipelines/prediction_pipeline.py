@@ -16,22 +16,18 @@ for fast polling by the React dashboard. TTL configurable via
 Loads the trained CatBoost model from models/catboost.cbm and applies
 the 3-tier logic (auto_block / review_queue / soft_signal / approve).
 """
+import json
 import os
 import sys
-import json
-import time
-import joblib
-import redis
-import numpy as np
-import pandas as pd
 
+import joblib
+import pandas as pd
+import redis
 from catboost import CatBoostClassifier
 
-from src.components.feature_engineering import FeatureEngineering
-from src.components.feature_store      import FeatureStoreClient
-from src.utils.logger    import logging
+from src.components.feature_store import FeatureStoreClient
 from src.utils.exception import CustomException
-
+from src.utils.logger import logging
 
 # Features that come from Feast's online store (Redis) at inference time
 ONLINE_FEATURES = [

@@ -24,13 +24,13 @@ Connection uses the same env vars as the rest of the project:
 """
 import os
 import sys
-import psycopg2
-from psycopg2.extras import execute_values
 from contextlib import contextmanager
 
-from src.utils.logger    import logging
-from src.utils.exception import CustomException
+import psycopg2
+from psycopg2.extras import execute_values
 
+from src.utils.exception import CustomException
+from src.utils.logger import logging
 
 DDL = """
 CREATE TABLE IF NOT EXISTS fraud_detection.decision_log (

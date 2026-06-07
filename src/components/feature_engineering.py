@@ -14,13 +14,8 @@ Note: velocity features at inference time are computed from the training
 data history (Phase 5 deferred); for now the training pipeline computes
 them from each row's full history.
 """
-import sys
 import numpy as np
 import pandas as pd
-
-from src.utils.logger import logging
-from src.utils.exception import CustomException
-
 
 DROP = [
     "trans_date_trans_time", "first", "last", "street", "dob",

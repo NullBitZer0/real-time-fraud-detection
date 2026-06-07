@@ -9,25 +9,31 @@ Endpoints:
     WS   /ws                           — push live predictions to React dashboard
 """
 import os
+import pathlib
 import time
-import uuid
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import List
 
-import numpy as np
 import pandas as pd
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
+import psycopg2
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sklearn.metrics import confusion_matrix, f1_score
 
 from api.schema import (
-    TransactionRequest, FraudResponse,
-    Run100TestsRequest, Run100TestsResponse, SingleTestResult,
-    MetricsResponse, HealthResponse,
+    AuditRow,
+    FraudResponse,
+    HealthResponse,
+    MetricsResponse,
+    Run100TestsRequest,
+    Run100TestsResponse,
+    SingleTestResult,
+    TransactionRequest,
 )
 from pipelines.prediction_pipeline import PredictionPipeline
+from src.components.audit_log import insert_decision
 from src.components.data_ingestion import read_sparkov_split
-from src.components.audit_log       import ensure_table as audit_ensure, insert_decision
 from src.components.schema_validation import validate_transactions
 from src.utils.logger import logging
 
@@ -105,6 +111,13 @@ app.add_middleware(
     allow_headers     = ["*"],
 )
 
+# Serve static assets from /metrics (drift_report.html, etc.) at /static
+_static_dir = pathlib.Path("metrics")
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+else:
+    logging.warning(f"static dir '{_static_dir}' not found — drift_report.html will be unavailable")
+
 
 # ── /health ───────────────────────────────────────────────────────────────────
 @app.get("/health", response_model=HealthResponse, tags=["System"])
@@ -178,7 +191,10 @@ async def readyz(request: Request):
 async def prometheus_metrics(request: Request):
     """Prometheus-format metrics — total/fraud counters + latency histogram."""
     from prometheus_client import (
-        CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest,
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Histogram,
+        generate_latest,
     )
     from starlette.responses import Response
 
@@ -362,3 +378,60 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
     except Exception:
         manager.disconnect(websocket)
+
+
+# ── /audit/recent ─────────────────────────────────────────────────────────────
+@app.get("/audit/recent", response_model=List[AuditRow], tags=["System"])
+async def audit_recent(n: int = 100):
+    """Read the last N rows from fraud_detection.decision_log.
+
+    Used by the React dashboard's Audit Log tab.
+    Fails with 503 if Postgres is unreachable.
+    """
+    n = max(1, min(int(n), 1000))
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.environ.get("POSTGRES_HOST", "localhost"),
+            port=int(os.environ.get("POSTGRES_PORT", 5432)),
+            user=os.environ.get("POSTGRES_USER", "feast"),
+            password=os.environ.get("POSTGRES_PASSWORD", "feast"),
+            dbname=os.environ.get("POSTGRES_DB", "feast"),
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, trans_num, fraud_probability, tier, action, threshold_used,
+                       is_fraud_ground_truth, model_version, latency_ms, ingested_at,
+                       request_ip, user_agent
+                FROM   fraud_detection.decision_log
+                ORDER  BY ingested_at DESC
+                LIMIT  %s
+                """,
+                (n,),
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        logging.error(f"/audit/recent failed: {e}")
+        raise HTTPException(status_code=503, detail=f"audit log unavailable: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return [
+        AuditRow(
+            id                    = r[0],
+            trans_num             = r[1],
+            fraud_probability     = r[2],
+            tier                  = r[3],
+            action                = r[4],
+            threshold_used        = r[5],
+            is_fraud_ground_truth = r[6],
+            model_version         = r[7],
+            latency_ms            = r[8],
+            ingested_at           = r[9],
+            request_ip            = r[10],
+            user_agent            = r[11],
+        )
+        for r in rows
+    ]

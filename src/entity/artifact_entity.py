@@ -1,6 +1,6 @@
 """Artifact entities for the Sparkov pipeline."""
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 
 @dataclass

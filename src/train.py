@@ -13,19 +13,17 @@ Usage:
 import os
 import sys
 import time
-import numpy as np
+
 import pandas as pd
 
 # Make project root importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.logger import logging
-from src.utils.exception import CustomException
 from src.components.data_ingestion import DataIngestion
 from src.components.data_validation import DataValidation
 from src.components.feature_engineering import FeatureEngineering
 from src.components.model_training import ModelTrainer
-from src.components.model_evaluation import evaluate_model
+from src.utils.logger import logging
 
 
 def main():
@@ -92,10 +90,10 @@ def main():
                      f"R={info['recall']:.4f}  F1={info['f1']:.4f}  "
                      f"TP={info['tp']:>5}  FP={info['fp']:>5}  FN={info['fn']:>5}")
     logging.info("")
-    logging.info(f"Artifacts saved:")
+    logging.info("Artifacts saved:")
     logging.info(f"  model:        {metadata['model_path']}")
-    logging.info(f"  metadata:     models/metadata.json")
-    logging.info(f"  feature_eng:  models/feature_engineering.pkl")
+    logging.info("  metadata:     models/metadata.json")
+    logging.info("  feature_eng:  models/feature_engineering.pkl")
 
 
 if __name__ == "__main__":

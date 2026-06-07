@@ -9,12 +9,8 @@ Run:
     python -m tests.test_parity
     python -m tests.test_parity --n 5000
 """
-import os
-import sys
-import json
 import argparse
-import numpy as np
-import pandas as pd
+
 from sklearn.metrics import confusion_matrix, f1_score
 
 from pipelines.prediction_pipeline import PredictionPipeline
@@ -48,7 +44,8 @@ def main():
     y_pred = (out["tier"] >= 1).astype(int).values
     cm  = confusion_matrix(y_true, y_pred, labels=[0, 1]).tolist()
     f1m = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
-    tn, fp = cm[0]; fn, tp = cm[1]
+    tn, fp = cm[0]
+    fn, tp = cm[1]
     print(f"Parity test confusion [[TN,FP],[FN,TP]]: {cm}")
     print(f"Parity test macro F1: {f1m:.4f}")
 

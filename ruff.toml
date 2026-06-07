@@ -1,0 +1,26 @@
+# ── Ruff configuration ────────────────────────────────────────────────────────
+# Excludes:
+#   - src/api/app.py  — legacy IBM credit-card-fraud demo (uses creditcard.csv, not Sparkov)
+#   - src/_legacy_ibm — archived code from earlier iterations
+
+target-version = "py312"
+line-length = 120
+
+[lint]
+# F401: unused imports — caught by --fix
+# F541: f-string without placeholders — caught by --fix
+# F841: unused local variables — caught by --fix
+# E402: module-level imports not at top — keep enabled (real bug indicator)
+# E501: line too long — relax
+# E701/E702: multiple statements on one line — keep enabled
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"src/api/app.py" = ["E402", "E401", "F401", "F403"]   # legacy IBM credit-card demo
+"src/_legacy_ibm/*" = ["E", "F", "W", "I"]
+"tests/*" = ["E402"]   # tests may need to import from src/
+
+[format]
+quote-style = "double"
+indent-style = "space"

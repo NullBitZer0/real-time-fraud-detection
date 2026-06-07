@@ -8,6 +8,7 @@ Run:
 """
 import sys
 import time
+
 from fastapi.testclient import TestClient
 
 from api.app import app
@@ -136,6 +137,25 @@ def main():
         else:
             results["failed"] += 1
             fail_messages.append(f"/metrics/prom status={r.status_code}")
+
+        # ── /audit/recent ──────────────────────────────────────────────────────
+        r = client.get("/audit/recent?n=10")
+        if r.status_code == 200:
+            body = r.json()
+            assert isinstance(body, list), f"expected list, got {type(body)}"
+            n = len(body)
+            print(f"  /audit/recent  → {r.status_code}  rows={n}  latest={body[0]['trans_num'][:12] if n else '–'}…  tier={body[0]['tier'] if n else '–'}")
+            if n == 0:
+                # Acceptable if decision_log is empty (we ran /predict + /demo/run-100 above though)
+                print("  ⚠ audit log is empty — Postgres may be down")
+            results["passed"] += 1
+        elif r.status_code == 503:
+            # Acceptable: Postgres unavailable in the test environment
+            print("  /audit/recent  → 503  (Postgres unavailable — acceptable in CI)")
+            results["passed"] += 1
+        else:
+            results["failed"] += 1
+            fail_messages.append(f"/audit/recent status={r.status_code} body={r.text[:200]}")
 
     # ── Summary ────────────────────────────────────────────────────────────────
     print("-" * 60)

@@ -14,14 +14,10 @@ Usage:
         tracker.log_model(catboost_model, "catboost")
 """
 import os
-import sys
-import subprocess
-from contextlib import contextmanager
 
 import mlflow
 
 from src.utils.logger import logging
-from src.utils.exception import CustomException
 
 
 class MLflowTracker:

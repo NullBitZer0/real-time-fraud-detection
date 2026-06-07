@@ -8,24 +8,25 @@ encoder state) are saved to models/ for the prediction pipeline.
 
 Metrics and the model artifact are also logged to MLflow (DAGsHub-backed).
 """
+import json
 import os
 import sys
-import json
 import time
+
 import joblib
 import numpy as np
-import pandas as pd
-
 from catboost import CatBoostClassifier
 from sklearn.metrics import (
-    average_precision_score, roc_auc_score,
-    fbeta_score, f1_score, precision_score, recall_score,
-    confusion_matrix,
+    average_precision_score,
+    f1_score,
+    fbeta_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
 )
 
-from src.utils.logger import logging
 from src.utils.exception import CustomException
-
+from src.utils.logger import logging
 
 # 3-tier thresholds from the OOF run in notebooks/experiments.ipynb
 TIER_THRESHOLDS = {
@@ -171,7 +172,7 @@ class ModelTrainer:
                     if isinstance(v, (int, float)):
                         mlflow.log_metric(f"{tier_name}_{k}", v)
             # Artifacts — log native CatBoost model (so it can be registered)
-            catboost_logged = False
+            _catboost_logged = False
             try:
                 import mlflow.catboost
                 # MLflow 3.x: use `name` (artifact_path is deprecated)
@@ -181,14 +182,14 @@ class ModelTrainer:
                         name="catboost",
                         registered_model_name=None,
                     )
-                    catboost_logged = True
+                    _catboost_logged = True
                 except TypeError:
                     # MLflow 2.x fallback
                     mlflow.catboost.log_model(
                         model,
                         artifact_path="catboost",
                     )
-                    catboost_logged = True
+                    _catboost_logged = True
             except Exception as e:
                 logging.warning(f"mlflow.catboost.log_model failed: {e}")
             # Always also log the raw .cbm file as a backup artifact so the

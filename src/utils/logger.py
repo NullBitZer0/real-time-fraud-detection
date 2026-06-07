@@ -13,13 +13,12 @@ Usage:
     logging.info("training started")
     logging.info("model promoted", extra={"version": 1, "stage": "Production"})
 """
-import os
-import sys
 import json
-import socket
 import logging
+import os
+import socket
+import sys
 from datetime import datetime, timezone
-
 
 # ── Config ────────────────────────────────────────────────────────────────────
 LOG_DIR  = "logs"

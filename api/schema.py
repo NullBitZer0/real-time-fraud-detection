@@ -7,8 +7,9 @@ Two request shapes are supported:
 Two response shapes for /predict and /demo/run-100-tests.
 """
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 # ── Single-transaction prediction ─────────────────────────────────────────────
@@ -105,3 +106,19 @@ class HealthResponse(BaseModel):
     model_loaded: bool
     model_name:  Optional[str] = None
     version:     str = "2.0.0"   # Sparkov + CatBoost + 3-tier
+
+
+class AuditRow(BaseModel):
+    """One row from fraud_detection.decision_log — exposed via /audit/recent."""
+    id:                    int
+    trans_num:             str
+    fraud_probability:     float
+    tier:                  int
+    action:                str
+    threshold_used:        float
+    is_fraud_ground_truth: Optional[int]   = None
+    model_version:         Optional[str]   = None
+    latency_ms:            Optional[float] = None
+    ingested_at:           datetime
+    request_ip:            Optional[str]   = None
+    user_agent:            Optional[str]   = None

@@ -8,16 +8,15 @@ Usage:
     python -m src.components.data_ingestion_postgres
     python -m src.components.data_ingestion_postgres --train /path/to/fraudTrain.csv
 """
-import os
-import sys
-import io
 import argparse
+import io
+import sys
+
 import pandas as pd
 import psycopg2
 
-from src.utils.logger import logging
 from src.utils.exception import CustomException
-
+from src.utils.logger import logging
 
 DB_KWARGS = dict(host="localhost", port=5432, user="feast", password="feast", dbname="feast")
 TABLE     = "fraud_detection.raw_transactions"

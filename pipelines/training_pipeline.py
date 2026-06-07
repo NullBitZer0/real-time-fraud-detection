@@ -13,13 +13,10 @@ Usage:
     python -m pipelines.training_pipeline data.source=csv   # fallback
     python -m pipelines.training_pipeline model.iterations=1000 model.depth=10
 """
-import os
-import sys
 import json
+import os
 
-import joblib
 import hydra
-import numpy as np
 import pandas as pd
 import psycopg2
 from omegaconf import DictConfig
@@ -27,11 +24,9 @@ from omegaconf import DictConfig
 from src.components.data_ingestion import DataIngestion, read_sparkov_split
 from src.components.data_validation import DataValidation
 from src.components.feature_engineering import FeatureEngineering
-from src.components.preprocessing import DataPreprocessing
-from src.components.model_training import ModelTrainer, build_catboost_params
-from src.components.model_evaluation import evaluate_model
 from src.components.mlflow_tracking import from_hydra as mlflow_from_hydra
-
+from src.components.model_evaluation import evaluate_model
+from src.components.model_training import ModelTrainer, build_catboost_params
 from src.utils.logger import logging
 
 
@@ -164,7 +159,6 @@ def run_training_pipeline(cfg: DictConfig):
         t.register_model(model_uri, cfg.mlflow.registered_name, stage="Staging")
 
     # Re-evaluate with the 3-tier threshold for confusion-matrix output
-    model = joblib.load if False else None  # placeholder (model already saved)
     from catboost import CatBoostClassifier
     loaded = CatBoostClassifier()
     loaded.load_model(metadata["model_path"])
@@ -194,10 +188,10 @@ def run_training_pipeline(cfg: DictConfig):
             f"TP={info['tp']:>5}  FP={info['fp']:>5}  FN={info['fn']:>5}"
         )
     logging.info("")
-    logging.info(f"Artifacts:")
+    logging.info("Artifacts:")
     logging.info(f"  model       : {metadata['model_path']}")
-    logging.info(f"  metadata    : models/metadata.json")
-    logging.info(f"  feature_eng : models/feature_engineering.pkl")
+    logging.info("  metadata    : models/metadata.json")
+    logging.info("  feature_eng : models/feature_engineering.pkl")
 
     # ── DVC metrics (tracked via `dvc metrics show`) ─────────────────────────
     os.makedirs("metrics", exist_ok=True)
@@ -214,7 +208,7 @@ def run_training_pipeline(cfg: DictConfig):
     }
     with open("metrics/train_metrics.json", "w") as f:
         json.dump(dvc_metrics, f, indent=2)
-    logging.info(f"DVC metrics → metrics/train_metrics.json")
+    logging.info("DVC metrics → metrics/train_metrics.json")
 
     return eval_metrics
 

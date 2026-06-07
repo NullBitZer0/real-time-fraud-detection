@@ -15,12 +15,12 @@ raw row at inference time.
 """
 import os
 import sys
+
 import pandas as pd
 
 from feast import FeatureStore
-from src.utils.logger import logging
 from src.utils.exception import CustomException
-
+from src.utils.logger import logging
 
 FEAST_REPO_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", "feast", "feature_repo"

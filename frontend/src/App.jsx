@@ -1,13 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import MetricsBar from './components/MetricsBar'
-import LiveFeed   from './components/LiveFeed'
-import FraudChart from './components/FraudChart'
-import DemoResults from './components/DemoResults'
+import MetricsBar    from './components/MetricsBar'
+import LiveFeed      from './components/LiveFeed'
+import FraudChart    from './components/FraudChart'
+import DemoResults   from './components/DemoResults'
+import MonitoringTab from './components/MonitoringTab'
+import DriftTab      from './components/DriftTab'
+import HealthTab     from './components/HealthTab'
+import AuditTab      from './components/AuditTab'
+import MLflowTab     from './components/MLflowTab'
 
-const API  = 'http://localhost:8000'
-const WS   = 'ws://localhost:8000/ws'
+const API  = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const WS   = import.meta.env.VITE_WS_URL  || 'ws://localhost:8000/ws'
 const MAX_EVENTS    = 50
 const MAX_CHART_PTS = 60
+
+const TABS = [
+  { id: 'live',       label: '📊 Live' },
+  { id: 'demo',       label: '🧪 Demo' },
+  { id: 'monitoring', label: '📈 Monitoring' },
+  { id: 'drift',      label: '🌊 Drift' },
+  { id: 'health',     label: '❤️ Health' },
+  { id: 'audit',      label: '📜 Audit' },
+  { id: 'mlflow',     label: '🔗 MLflow' },
+]
 
 const EMPTY_METRICS = {
   total_transactions: 0, total_fraud: 0,
@@ -15,6 +30,7 @@ const EMPTY_METRICS = {
 }
 
 export default function App() {
+  const [tab,        setTab]        = useState('live')
   const [metrics,    setMetrics]    = useState(EMPTY_METRICS)
   const [events,     setEvents]     = useState([])
   const [chartData,  setChartData]  = useState([])
@@ -68,7 +84,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ n_fraud: 50, n_legit: 50 }),
       })
-      if (r.ok) setDemoResult(await r.json())
+      if (r.ok) {
+        setDemoResult(await r.json())
+        setTab('demo')
+      }
     } catch (err) {
       console.error('Demo failed:', err)
     } finally {
@@ -100,20 +119,60 @@ export default function App() {
         </div>
       </header>
 
-      <MetricsBar metrics={metrics} />
+      <nav className="tab-bar">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            className={`tab ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-      <div className="main-grid">
-        <LiveFeed events={events} />
-        <FraudChart chartData={chartData} />
+      <div className="tab-content">
+        {tab === 'live' && (
+          <>
+            <MetricsBar metrics={metrics} />
+            <div className="main-grid">
+              <LiveFeed events={events} />
+              <FraudChart chartData={chartData} />
+            </div>
+          </>
+        )}
+
+        {tab === 'demo' && (
+          <>
+            {demoResult
+              ? <DemoResults result={demoResult} />
+              : (
+                <div className="card">
+                  <span className="card-title">🧪 Demo Results</span>
+                  <p className="monitoring-hint">
+                    Click <strong>▶ Run 100 Tests</strong> in the header to run
+                    the demo. It samples 50 fraud + 50 legit rows from
+                    <code>data/raw/fraudTest.csv</code>, scores them, and
+                    populates this tab + the audit log.
+                  </p>
+                </div>
+              )
+            }
+          </>
+        )}
+
+        {tab === 'monitoring' && <MonitoringTab />}
+        {tab === 'drift'      && <DriftTab />}
+        {tab === 'health'     && <HealthTab />}
+        {tab === 'audit'      && <AuditTab />}
+        {tab === 'mlflow'     && <MLflowTab />}
       </div>
-
-      {demoResult && <DemoResults result={demoResult} />}
 
       <div className="status-bar">
         <div className={`status-dot ${wsStatus}`} />
         <span>WebSocket: {wsStatus}</span>
         <span style={{ marginLeft: 'auto' }}>
-          API: {API} · T2 threshold: 0.1198 · Model: CatBoost (PR-AUC 0.79)
+          API: {API} · T2 threshold: 0.1198 · Model: CatBoost v3 (PR-AUC 0.8384)
         </span>
       </div>
     </div>

@@ -6,19 +6,16 @@ train rows, evaluates on the val rows.
 
 Output: models/optuna_best.json with the best params found.
 """
-import os
-import sys
-import json
 import argparse
+import json
+import os
+
 import optuna
-import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
 from sklearn.metrics import average_precision_score
-from sklearn.model_selection import TimeSeriesSplit
 
 from src.utils.logger import logging
-from src.utils.exception import CustomException
 
 
 def load_data():

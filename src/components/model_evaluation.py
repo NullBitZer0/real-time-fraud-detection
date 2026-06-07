@@ -4,15 +4,15 @@ Generates the metrics + 3-tier table that goes into the demo dashboard.
 Used by the training pipeline to summarize the model, and by the
 prediction pipeline to compare against ground truth.
 """
-import sys
-import json
-import numpy as np
-import pandas as pd
 
 from sklearn.metrics import (
-    confusion_matrix, classification_report,
-    roc_auc_score, average_precision_score,
-    f1_score, precision_score, recall_score, fbeta_score,
+    average_precision_score,
+    confusion_matrix,
+    f1_score,
+    fbeta_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
 )
 
 

@@ -5,12 +5,8 @@ The Sparkov schema is fixed (trans_date_trans_time, cc_num, merchant,
 category, amt, lat, long, merch_lat, merch_long, dob, city, state, job,
 zip, unix_time, trans_num, is_fraud, first, last, street, gender).
 """
-import sys
-import pandas as pd
 
 from src.utils.logger import logging
-from src.utils.exception import CustomException
-
 
 REQUIRED_COLUMNS = [
     "trans_date_trans_time", "cc_num", "merchant", "category", "amt",

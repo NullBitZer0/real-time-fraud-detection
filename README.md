@@ -73,7 +73,7 @@ are tracked on **DAGsHub MLflow**; CI/CD runs on **GitHub Actions**.
 
 ```bash
 # 1. Start all infrastructure
-docker compose up -d postgres redis kafka
+docker compose up -d postgres redis kafka prometheus grafana
 
 # 2. Run the full DVC pipeline (ingest → feast → train)
 dvc repro
@@ -81,7 +81,7 @@ dvc repro
 # 3. Start the API
 python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
-# 4. Start the React dashboard
+# 4. Start the React dashboard (unified — 7 tabs)
 cd frontend && npm install && npm run dev
 
 # 5. (Optional) Run the 100-test Kafka end-to-end demo
@@ -89,10 +89,51 @@ python -m kf.test_100 --broker localhost:9094
 ```
 
 Then open:
-- `http://localhost:5173` — React dashboard with "▶ Run 100 Tests" button
+- `http://localhost:3000` — **Unified React dashboard** (7 tabs: Live, Demo, Monitoring, Drift, Health, Audit, MLflow)
 - `http://localhost:8000/docs` — FastAPI Swagger
+- `http://localhost:3001` — Grafana monitoring dashboards
+- `http://localhost:9090` — Prometheus UI
 - `http://localhost:5540` — RedisInsight (Redis UI)
 - `http://localhost:5050` — pgAdmin (Postgres UI, login: `admin@admin.com` / `admin`)
+
+---
+
+## Unified dashboard (React, 7 tabs)
+
+A single React app at `http://localhost:3000` exposes every observability surface:
+
+| Tab | What it shows | Data source |
+|---|---|---|
+| **📊 Live** | Real-time fraud rate chart, live transaction feed, top metrics | `GET /metrics` + `WS /ws` |
+| **🧪 Demo** | Confusion matrix, macro F1, tier counts from the 100-test demo | `POST /demo/run-100-tests` |
+| **📈 Monitoring** | Grafana dashboard embedded as iframe (totals, fraud %, p50/p95/p99, throughput) | `http://localhost:3001` |
+| **🌊 Drift** | Evidently HTML report embedded as iframe | `/static/drift_report.html` (mounted from `metrics/`) |
+| **❤️ Health** | `/health` + `/readyz` status, parsed Prometheus counters | `GET /health`, `/readyz`, `/metrics/prom` |
+| **📜 Audit** | Last 200 /predict decisions from `fraud_detection.decision_log` (with backfilled ground truth accuracy) | `GET /audit/recent` |
+| **🔗 MLflow** | Current production model summary + deep-link buttons to DAGsHub | `models/production_alias.json` + DAGsHub URLs |
+
+The **▶ Run 100 Tests** button in the header triggers `/demo/run-100-tests` and
+auto-switches to the Demo tab when finished.
+
+### New API endpoints added for the dashboard
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET`  | `/audit/recent?n=100` | Last N rows from `fraud_detection.decision_log` |
+| `GET`  | `/static/{file}`      | Serves `metrics/*` (drift_report.html/json) for iframe embedding |
+
+### Configuration
+
+The frontend reads two optional env vars (defaults shown):
+
+```bash
+# frontend/.env.local
+VITE_API_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000/ws
+VITE_GRAFANA_URL=http://localhost:3001
+VITE_DAGSHUB_OWNER=NullBitZer0
+VITE_DAGSHUB_REPO=real-time-fraud-detection
+```
 
 ---
 

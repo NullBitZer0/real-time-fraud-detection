@@ -10,14 +10,14 @@ Usage:
     python -m src.components.mlflow_promote
     python -m src.components.mlflow_promote --floor 0.78 --name FraudDetectionCatBoost
 """
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
 from pathlib import Path
 
-import mlflow
 import dagshub
+import mlflow
 
 # Load .env early — must happen BEFORE the logger is imported, because
 # some env vars (e.g. DAGSHUB_TOKEN) are read by dagshub.init() below
@@ -29,9 +29,8 @@ try:
 except ImportError:
     pass
 
-from src.utils.logger    import logging
 from src.utils.exception import CustomException
-
+from src.utils.logger import logging
 
 # Default model registry name — must match `params.yaml:mlflow.registered_name`
 DEFAULT_NAME = "FraudDetectionCatBoost"

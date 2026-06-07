@@ -13,13 +13,11 @@ feast/feature_repo/features.py. After `feast apply` + `feast materialize`
 they land in Postgres (offline) and Redis (online).
 """
 import os
-import sys
-import numpy as np
+
 import pandas as pd
 
 from src.components.feature_engineering import FeatureEngineering
 from src.utils.logger import logging
-from src.utils.exception import CustomException
 
 
 def _read_sparkov(path: str) -> pd.DataFrame:
@@ -58,10 +56,10 @@ def build_feature_tables(train_path: str = "data/raw/fraudTrain.csv",
 
     # Split back into train + test for the per-view tables
     is_train = combined["trans_date_trans_time"] < train_df["trans_date_trans_time"].max()
-    train_fe = combined_fe[is_train].reset_index(drop=True)
-    test_fe  = combined_fe[~is_train].reset_index(drop=True)
-    all_fe   = combined_fe  # for the per-entity tables we need all rows
-    features = fe.feature_list
+    _train_fe = combined_fe[is_train].reset_index(drop=True)
+    _test_fe  = combined_fe[~is_train].reset_index(drop=True)
+    all_fe    = combined_fe  # for the per-entity tables we need all rows
+    _features = fe.feature_list
 
     # ── View 1: per-transaction (one row per trans_num) ──────────────────────
     txn_cols = [

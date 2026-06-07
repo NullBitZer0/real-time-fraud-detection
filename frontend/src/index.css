@@ -246,3 +246,143 @@ body {
 .status-dot { width:6px; height:6px; border-radius:50%; }
 .status-dot.connected    { background: var(--success); }
 .status-dot.disconnected { background: var(--danger); }
+
+/* ── Tabs (unified dashboard) ─────────────────────────────────────────────── */
+.tab-bar {
+  display: flex; gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  font-family: var(--font);
+}
+.tab:hover { color: var(--text); background: var(--surface2); }
+.tab.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.tab-content { min-height: 60vh; }
+
+/* ── Monitoring (Grafana iframe) ──────────────────────────────────────────── */
+.monitoring-card { padding: 0; overflow: hidden; }
+.monitoring-bar {
+  display: flex; gap: 12px; align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.monitoring-hint { color: var(--muted); font-size: 12px; flex: 1 1 auto; }
+.monitoring-hint code {
+  background: var(--surface2); padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; color: var(--accent);
+}
+.monitoring-iframe {
+  width: 100%; height: 75vh; min-height: 600px;
+  border: 0; background: var(--bg);
+}
+.monitoring-fallback {
+  padding: 30px;
+  color: var(--text);
+}
+.monitoring-fallback h3 { color: var(--warning); margin-bottom: 12px; }
+.monitoring-fallback pre {
+  background: var(--surface2); padding: 10px 14px; border-radius: 6px;
+  display: inline-block; margin: 8px 0; font-size: 12px;
+}
+.monitoring-fallback ul { margin: 8px 0 0 24px; font-size: 13px; color: var(--muted); }
+.monitoring-fallback code {
+  background: var(--surface2); padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; color: var(--accent);
+}
+
+/* ── Drift tab ────────────────────────────────────────────────────────────── */
+.drift-card { padding: 0; overflow: hidden; }
+.drift-iframe {
+  width: 100%; height: 80vh; min-height: 700px;
+  border: 0; background: #fff;
+}
+
+/* ── Health tab ───────────────────────────────────────────────────────────── */
+.health-grid { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; }
+.health-row {
+  display: flex; gap: 16px; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid #1f2d4530;
+}
+.health-row-label { flex: 0 0 200px; color: var(--muted); font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.health-row-value { font-family: monospace; font-size: 12px; color: var(--text); flex: 1; }
+.health-sub {
+  margin-top: 8px; padding: 12px 16px;
+  background: var(--surface2); border-radius: 8px;
+}
+.health-sub ul { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.health-sub li { display: flex; align-items: center; gap: 12px; font-size: 12px; }
+.health-sub code { font-family: monospace; color: var(--accent); flex: 0 0 100px; }
+.health-err { color: var(--danger); font-size: 11px; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px; font-size: 10px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.status-pill.ok   { background: #10b98120; color: var(--success); }
+.status-pill.fail { background: #ef444420; color: var(--danger); }
+.status-dot-inline {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.status-pill.ok   .status-dot-inline { background: var(--success); }
+.status-pill.fail .status-dot-inline { background: var(--danger); }
+.health-error { color: var(--danger); padding: 20px; }
+.raw-prom {
+  background: var(--surface2); padding: 14px; border-radius: 8px;
+  font-size: 11px; max-height: 400px; overflow: auto; color: var(--muted);
+}
+
+/* ── MLflow tab ───────────────────────────────────────────────────────────── */
+.mlflow-alias {
+  background: var(--surface2); border-radius: 8px;
+  padding: 14px 18px; margin: 14px 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.mlflow-alias-row { display: flex; gap: 16px; align-items: center; font-size: 12px; }
+.mlflow-alias-label { flex: 0 0 160px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.mlflow-alias-value { color: var(--text); font-family: monospace; }
+.mlflow-alias-value.mono.small { font-size: 10px; }
+.mlflow-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.run-demo-btn.secondary {
+  background: var(--surface2);
+  color: var(--text);
+}
+.run-demo-btn.small { padding: 6px 12px; font-size: 11px; }
+
+/* ── Tier badge additions (for AuditTab) ─────────────────────────────────── */
+.tier-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; font-family: monospace;
+}
+.tier-badge.tier-0 { background: #10b98120; color: var(--success); }
+.tier-badge.tier-1 { background: #dc262620; color: var(--critical); }
+.tier-badge.tier-2 { background: #f59e0b20; color: var(--warning); }
+.tier-badge.tier-3 { background: #eab30820; color: #eab308; }
+
+@media (max-width: 900px) {
+  .metrics-bar { grid-template-columns: repeat(2, 1fr); }
+  .tab-bar { flex-wrap: wrap; }
+  .health-row-label { flex-basis: 130px; }
+}
+
