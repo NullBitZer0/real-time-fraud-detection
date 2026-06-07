@@ -9,10 +9,10 @@ xgboost
 lightgbm 
 catboost 
 optuna 
-mlflow 
-hydra-core 
-dvc 
-dagshub 
+mlflow==3.11.1
+hydra-core
+dvc
+dagshub==0.7.0
 fastapi 
 uvicorn
 evidently

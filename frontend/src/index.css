@@ -149,6 +149,93 @@ body {
 .risk-HIGH     { background:#ef444420; color:var(--danger); }
 .risk-CRITICAL { background:#dc262620; color:var(--critical); }
 
+/* ── 3-Tier Badges (new — replaces risk_level) ───────────────────────────── */
+.tier-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  min-width: 32px; text-align: center;
+}
+.tier-0 { background:#10b98120; color:var(--success); border:1px solid #10b98140; }
+.tier-1 { background:#dc262620; color:var(--critical); border:1px solid #dc262660; }
+.tier-2 { background:#f59e0b20; color:var(--warning); border:1px solid #f59e0b60; }
+.tier-3 { background:#eab30820; color:#eab308; border:1px solid #eab30860; }
+
+.feed-item.tier-0 { border-left: 3px solid var(--success); }
+.feed-item.tier-1 { border-left: 3px solid var(--critical); }
+.feed-item.tier-2 { border-left: 3px solid var(--warning); }
+.feed-item.tier-3 { border-left: 3px solid #eab308; }
+
+/* ── Run Demo Button ──────────────────────────────────────────────────────── */
+.run-demo-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.run-demo-btn:hover  { background: #2563eb; }
+.run-demo-btn:active { transform: scale(0.97); }
+.run-demo-btn:disabled { background: var(--muted); cursor: wait; }
+
+/* ── Demo Results Section ─────────────────────────────────────────────────── */
+.demo-results { margin-top: 0; }
+.demo-summary {
+  display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 16px;
+}
+.demo-stat {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.demo-stat-label { font-size: 10px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.6px; }
+.demo-stat-value { font-size: 22px; font-weight: 700; }
+.demo-stat-value.accent { color: var(--accent); }
+.demo-stat-value.mono   { font-family: monospace; font-size: 14px; line-height: 1.5; font-weight: 500; }
+.demo-stat-sub   { font-size: 11px; color: var(--muted); }
+
+.demo-tiers {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+.tier-pill {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 12px;
+}
+.tier-pill.tier-0 { border-left: 3px solid var(--success); }
+.tier-pill.tier-1 { border-left: 3px solid var(--critical); }
+.tier-pill.tier-2 { border-left: 3px solid var(--warning); }
+.tier-pill.tier-3 { border-left: 3px solid #eab308; }
+.tier-pill-name   { font-weight: 600; }
+.tier-pill-count  { font-size: 18px; font-weight: 700; }
+.tier-pill-thresh { font-size: 10px; color: var(--muted); }
+
+.demo-table-wrap { max-height: 400px; overflow-y: auto; margin-top: 12px; }
+.demo-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.demo-table th { text-align: left; padding: 8px; color: var(--muted); font-weight: 600;
+  text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+.demo-table td { padding: 6px 8px; border-bottom: 1px solid #1f2d4530; }
+.demo-table tr.tier-1 td { background: #dc262608; }
+.demo-table tr.tier-2 td { background: #f59e0b08; }
+.demo-table tr.tier-3 td { background: #eab30805; }
+.demo-table .mono { font-family: monospace; font-size: 11px; }
+
+.truth-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+  text-transform: uppercase;
+}
+.truth-badge.fraud { background: #dc262620; color: var(--critical); }
+.truth-badge.legit { background: #10b98120; color: var(--success); }
+
 /* ── Status ───────────────────────────────────────────────────────────────── */
 .status-bar {
   display: flex; gap: 8px; align-items: center;

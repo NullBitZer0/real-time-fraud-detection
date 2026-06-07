@@ -171,6 +171,7 @@ class ModelTrainer:
                     if isinstance(v, (int, float)):
                         mlflow.log_metric(f"{tier_name}_{k}", v)
             # Artifacts — log native CatBoost model (so it can be registered)
+            catboost_logged = False
             try:
                 import mlflow.catboost
                 # MLflow 3.x: use `name` (artifact_path is deprecated)
@@ -180,15 +181,19 @@ class ModelTrainer:
                         name="catboost",
                         registered_model_name=None,
                     )
+                    catboost_logged = True
                 except TypeError:
                     # MLflow 2.x fallback
                     mlflow.catboost.log_model(
                         model,
                         artifact_path="catboost",
                     )
+                    catboost_logged = True
             except Exception as e:
                 logging.warning(f"mlflow.catboost.log_model failed: {e}")
-                mlflow.log_artifact(self.model_path)  # fallback: raw .cbm file
+            # Always also log the raw .cbm file as a backup artifact so the
+            # model is downloadable directly from the MLflow run UI
+            mlflow.log_artifact(self.model_path)
             # Supporting artifacts
             mlflow.log_artifact(self.meta_path)
             mlflow.log_artifact(self.feat_path)

@@ -104,16 +104,16 @@ stages:
       size: 7971
     - path: src/components/mlflow_tracking.py
       hash: md5
-      md5: a0ae11c4411112c997571b2671b10164
-      size: 6264
+      md5: ad6ecb85445a0011d7278b553fb13fd5
+      size: 7083
     - path: src/components/model_evaluation.py
       hash: md5
       md5: 26a1223f783a007569c3e7423604ffb2
       size: 2675
     - path: src/components/model_training.py
       hash: md5
-      md5: 10b414b46d6578098565f0f792a08b0e
-      size: 10676
+      md5: 99fbdb89e836499b0ce247da8584f682
+      size: 11005
     params:
       params.yaml:
         data.val_quantile: 0.8
@@ -138,7 +138,7 @@ stages:
       size: 313
     - path: models/catboost.cbm
       hash: md5
-      md5: f539687151cd674e59d3369886280a03
+      md5: 5b99b1c35ce0292ee38cbacdd43be5cf
       size: 2183752
     - path: models/feature_engineering.pkl
       hash: md5
@@ -146,5 +146,5 @@ stages:
       size: 146561
     - path: models/metadata.json
       hash: md5
-      md5: 73dd3e3c804d001318709edcf3e28ed2
-      size: 1651
+      md5: b52598c3a1052dc91b6e527308b422c3
+      size: 1652

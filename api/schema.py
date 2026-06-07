@@ -1,46 +1,98 @@
+"""Pydantic schemas for the Sparkov fraud-detection API.
+
+Two request shapes are supported:
+  - TransactionRequest : single Sparkov transaction → /predict
+  - Run100TestsRequest : no body, just trigger the 100-test demo run
+
+Two response shapes for /predict and /demo/run-100-tests.
+"""
+from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List, Optional
 
 
+# ── Single-transaction prediction ─────────────────────────────────────────────
 class TransactionRequest(BaseModel):
-    """Raw transaction features — mirrors creditcard.csv schema."""
+    """Single Sparkov transaction — the 14 features the model needs."""
 
-    Time: float = Field(..., description="Seconds elapsed since first transaction")
-    Amount: float = Field(..., ge=0, description="Transaction amount in EUR")
-    V1: float; V2: float; V3: float; V4: float; V5: float
-    V6: float; V7: float; V8: float; V9: float; V10: float
-    V11: float; V12: float; V13: float; V14: float; V15: float
-    V16: float; V17: float; V18: float; V19: float; V20: float
-    V21: float; V22: float; V23: float; V24: float; V25: float
-    V26: float; V27: float; V28: float
+    trans_date_trans_time: datetime = Field(..., description="Transaction timestamp")
+    cc_num:                float   = Field(..., description="Card number (hashed)")
+    merchant:              str     = Field(..., description="Merchant name")
+    category:              str     = Field(..., description="Merchant category")
+    amt:                   float   = Field(..., ge=0, description="Amount in USD")
+    lat:                   float
+    long:                  float
+    merch_lat:             float
+    merch_long:            float
+    dob:                   str     = Field(..., description="Cardholder DOB (YYYY-MM-DD)")
+    city:                  str
+    state:                 str
+    job:                   str
+    zip:                   int
 
     class Config:
         json_schema_extra = {
             "example": {
-                "Time": 50000, "Amount": 2847.50,
-                "V1": -2.3, "V2": 1.7, "V3": -2.0, "V4": 0.5,
-                "V5": -0.9, "V6": -0.3, "V7": -0.7, "V8": 0.1,
-                "V9": -0.4, "V10": -2.1, "V11": 1.2, "V12": -2.5,
-                "V13": 0.3, "V14": -3.1, "V15": 0.2, "V16": -0.8,
-                "V17": -1.9, "V18": -0.5, "V19": 0.1, "V20": 0.2,
-                "V21": 0.3, "V22": 0.1, "V23": -0.1, "V24": 0.2,
-                "V25": 0.1, "V26": 0.3, "V27": 0.1, "V28": 0.05,
+                "trans_date_trans_time": "2019-01-01 00:00:18",
+                "cc_num": 4.042200e+17,
+                "merchant": "Hudson, Davis and Copeland",
+                "category": "grocery_pos",
+                "amt": 4.07,
+                "lat": 39.9658, "long": -82.9743,
+                "merch_lat": 39.8856, "merch_long": -82.9393,
+                "dob": "1977-08-12",
+                "city": "Columbus", "state": "OH",
+                "job": "Public attorney", "zip": 43201,
             }
         }
 
 
 class FraudResponse(BaseModel):
-    """Prediction result returned by /predict."""
+    """Returned by /predict."""
     transaction_id:    str
     fraud_probability: float = Field(..., ge=0.0, le=1.0)
     fraud_prediction:  int   = Field(..., ge=0, le=1)
+    tier:              int   = Field(..., ge=0, le=3)
+    action:            str   # "approve" | "soft_signal" | "review_queue" | "auto_block"
     threshold_used:    float
-    risk_level:        str   # "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
     latency_ms:        float
 
 
+# ── 100-test demo run ─────────────────────────────────────────────────────────
+class Run100TestsRequest(BaseModel):
+    """Body for POST /demo/run-100-tests — no fields, just triggers the run."""
+    n_fraud: int = Field(50, ge=0, le=100, description="How many fraud rows to include (0-100)")
+    n_legit: int = Field(50, ge=0, le=100, description="How many legit rows to include (0-100)")
+
+
+class SingleTestResult(BaseModel):
+    trans_num:         str
+    is_fraud:          int
+    fraud_probability: float
+    fraud_prediction:  int
+    tier:              int
+    action:            str
+    amt:               float
+    merchant:          str
+    category:          str
+
+
+class Run100TestsResponse(BaseModel):
+    n_total:    int
+    n_fraud:    int
+    n_legit:    int
+    tier1_count: int   # auto_block
+    tier2_count: int   # review_queue
+    tier3_count: int   # soft_signal
+    tier0_count: int   # approve
+    tier_thresholds: dict
+    confusion_matrix: List[List[int]]   # [[TN, FP], [FN, TP]]
+    macro_f1:        float
+    results:         List[SingleTestResult]
+
+
+# ── System endpoints ──────────────────────────────────────────────────────────
 class MetricsResponse(BaseModel):
-    """Aggregate statistics returned by /metrics."""
     total_transactions: int
     total_fraud:        int
     fraud_rate_pct:     float
@@ -51,4 +103,5 @@ class MetricsResponse(BaseModel):
 class HealthResponse(BaseModel):
     status:      str
     model_loaded: bool
-    version:     str = "1.0.0"
+    model_name:  Optional[str] = None
+    version:     str = "2.0.0"   # Sparkov + CatBoost + 3-tier
