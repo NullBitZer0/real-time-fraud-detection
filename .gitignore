@@ -21,10 +21,14 @@ models/
 outputs/
 
 # ── Data files ────────────────────────────────────────────────────────────────
-data/raw/
+data/raw/*
 data/processed/
 *.csv
 *.parquet
+
+# ── But DO commit DVC pointer files for the raw CSVs ──────────────────────────
+!data/raw/fraudTrain.csv.dvc
+!data/raw/fraudTest.csv.dvc
 
 # ── MLflow ────────────────────────────────────────────────────────────────────
 .mlflow/

@@ -31,15 +31,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install dvc pandera prometheus-client evidently
+          pip install dvc[s3] pandera prometheus-client evidently
 
-      - name: Download Sparkov dataset
+      - name: Download Sparkov dataset (DVC → DAGsHub S3)
+        env:
+          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
         run: |
           mkdir -p data/raw
-          if [ ! -f data/raw/fraudTest.csv ]; then
-            echo "::error::data/raw/fraudTest.csv not present — cannot train in CI"
-            exit 1
-          fi
+          # Configure DVC remote with secrets
+          dvc remote modify origin access_key_id  "${DAGSHUB_TOKEN}"
+          dvc remote modify origin secret_access_key "${DAGSHUB_TOKEN}"
+          # Pull only the raw CSVs (~502 MB combined)
+          dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv --force
           ls -lh data/raw/
 
       - name: Build Feast parquet sources
