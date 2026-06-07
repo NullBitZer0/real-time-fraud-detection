@@ -5,19 +5,21 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Retrain the production model on every push to main and log to DAGsHub MLflow.
-# Steps:
-#   1. Install deps
-#   2. Build Feast parquet sources (no Postgres needed)
-#   3. Train (emits metrics/train_metrics.json)
-#   4. METRIC GATE: fail if test_pr_auc < 0.78 (refuse to promote a regressed model)
-#   5. Promote Staging → Production (gated by metric + comparison vs current Production)
-#   6. Upload model + metrics + drift report as a GitHub Actions artifact
+# Continuous Deployment:
+#   - Pulls the latest DVC-tracked data from DAGsHub S3
+#   - Runs lint + tests to ensure main is green
+#   - (Optional) triggers a manual Airflow DAG run on a production Airflow host
+#
+# Model RETRAINING and PROMOTION are no longer done in CI/CD — those are
+# handled by Airflow (see airflow/dags/fraud_retraining.py) on a weekly
+# schedule + drift-triggered basis. This keeps the deploy path short and
+# predictable.
+#
 # Docker images are intentionally NOT built/pushed (per repo policy).
 jobs:
-  train-and-log:
+  lint-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -36,80 +38,52 @@ jobs:
       - name: Download Sparkov dataset (DVC → DAGsHub S3)
         env:
           DAGSHUB_TOKEN:           ${{ secrets.DAGSHUB_TOKEN }}
-          # Standard boto3 env vars — DVC's S3 backend picks these up automatically
           AWS_ACCESS_KEY_ID:       ${{ secrets.DAGSHUB_TOKEN }}
           AWS_SECRET_ACCESS_KEY:   ${{ secrets.DAGSHUB_TOKEN }}
           AWS_ENDPOINT_URL_S3:     https://dagshub.com/${{ secrets.DAGSHUB_REPO_OWNER }}/${{ secrets.DAGSHUB_REPO_NAME }}.s3
         run: |
           mkdir -p data/raw
-          echo "▶ DAGSHUB_TOKEN length: ${#DAGSHUB_TOKEN}"
-          echo "▶ AWS_ACCESS_KEY_ID first 8: ${AWS_ACCESS_KEY_ID:0:8}..."
-          echo "▶ AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}"
-          # Verify S3 reachability BEFORE pulling 500 MB
           python scripts/s3_smoke_test.py
           dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv --force
           ls -lh data/raw/
 
-      - name: Build Feast parquet sources
-        run: python -m src.components.data_ingestion_feast
+      - name: Lint (Ruff)
+        run: ruff check src/ api/ pipelines/ tests/ scripts/
 
-      - name: Train + log to DAGsHub MLflow
-        env:
-          DAGSHUB_REPO_OWNER:   ${{ secrets.DAGSHUB_REPO_OWNER }}
-          DAGSHUB_REPO_NAME:    ${{ secrets.DAGSHUB_REPO_NAME }}
-          DAGSHUB_TOKEN:        ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI:  ${{ secrets.MLFLOW_TRACKING_URI }}
+      - name: Compile Python (syntax check)
         run: |
-          echo "Tracking URI: ${MLFLOW_TRACKING_URI:-https://dagshub.com/${DAGSHUB_REPO_OWNER}/${DAGSHUB_REPO_NAME}.mlflow}"
-          python -m pipelines.training_pipeline
+          python -m compileall -q src/ api/ pipelines/ tests/ scripts/
 
-      - name: Generate drift report
+      - name: Run unit tests
         env:
           DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
           DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
           DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         run: |
-          python -m src.components.drift_report
+          python -m tests.test_api
 
-      - name: Metric gate (refuse to promote if PR-AUC < 0.78)
-        env:
-          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
-          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
-          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+  trigger-airflow:
+    # Optionally trigger an Airflow DAG run on a deployed Airflow host
+    # (e.g. the demo VM). Gated by an `AIRFLOW_*` secrets — skip if absent.
+    needs: lint-and-test
+    if: github.event_name == 'workflow_dispatch' && env.AIRFLOW_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AIRFLOW_URL:        ${{ secrets.AIRFLOW_URL        || '' }}
+      AIRFLOW_USER:       ${{ secrets.AIRFLOW_USER       || 'admin' }}
+      AIRFLOW_PASSWORD:   ${{ secrets.AIRFLOW_PASSWORD   || '' }}
+    steps:
+      - name: Trigger fraud_retraining DAG
         run: |
-          python - <<'PY'
-          import json, os, sys
-          with open("metrics/train_metrics.json") as f:
-              m = json.load(f)
-          pr = float(m.get("test_pr_auc", 0.0))
-          floor = 0.78
-          print(f"test_pr_auc = {pr:.4f}  (floor = {floor})")
-          if pr < floor:
-              print(f"::error::REJECTED: test_pr_auc {pr:.4f} < floor {floor}")
-              sys.exit(1)
-          print("✓ Metric gate passed")
-          PY
-
-      - name: Promote Staging → Production
-        if: success()
-        env:
-          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
-          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
-          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
-        run: |
-          python -m src.components.mlflow_promote --floor 0.78
-
-      - name: Upload trained artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: catboost-model
-          path: |
-            models/catboost.cbm
-            models/feature_engineering.pkl
-            models/metadata.json
-            models/production_alias.json
-            metrics/train_metrics.json
-            metrics/drift_report.html
-            metrics/drift_report.json
-          retention-days: 30
+          if [[ -z "$AIRFLOW_URL" ]]; then
+            echo "AIRFLOW_URL not configured — skipping Airflow trigger"
+            exit 0
+          fi
+          curl -sf -X POST "${AIRFLOW_URL}/api/v1/dags/fraud_retraining/dagRuns" \
+            -H "Content-Type: application/json" \
+            -u "${AIRFLOW_USER}:${AIRFLOW_PASSWORD}" \
+            -d '{"conf": {"trigger_source": "github-cd"}}' \
+            | tee /tmp/airflow_response.json
+          echo "✓ Triggered Airflow DAG run"

@@ -135,6 +135,8 @@ Why DVC over Git LFS? Because it understands the pipeline. If `data/raw/fraudTes
 
 The data lives in **DAGsHub S3** (DAGsHub gives you a free MLflow + DVC remote for open-source projects). Tracking 500 MB of CSVs + 2.4 MB of model artifacts works fine.
 
+> **Update:** DVC is now data-versioning only. The pipeline was replaced by **Apache Airflow** (see Phase 7 below) so the scheduler can be cron-based, drift-triggered, and have a real UI with retries + observability.
+
 ### 2. MLflow + DAGsHub — experiment tracking + model registry
 
 Every training run logs to MLflow: 9 metrics (val/test PR-AUC, ROC-AUC, F1, tier1/2 P/R), the 3-tier thresholds, the model artifact (`catboost.cbm`), the feature engineering pickle, and the run parameters. Model versions are promoted to "Production" with a single CLI call:
@@ -298,6 +300,15 @@ Production registry:
 
 The test PR-AUC (0.84) is meaningfully lower than val (0.91). That's a real drift signal. The drift report (Evidently, train vs test) confirms it: 14 of 32 features show statistical drift (KS test p < 0.05). FraudTest is from 6 months after fraudTrain, and the merchant mix, transaction patterns, and amounts have shifted. The next iteration of this project should add a periodic retraining step — but that's out of scope for a demo.
 
+### Phase 7 (added later): Apache Airflow for orchestration
+
+The "next iteration" above is now in the repo. Two DAGs in `airflow/dags/`:
+
+- **`fraud_drift_check`** (daily 06:00 UTC) — runs `src.components.drift_report`, parses the JSON for the number of features that drifted (KS p<0.05), and triggers…
+- **`fraud_retraining`** (weekly Mon 00:00 UTC + drift-triggered) — `dvc pull` → `pipelines.training_pipeline` → metric gate (test_pr_auc ≥ 0.78) → `mlflow_promote` → `feast apply` + `feast materialize`.
+
+DAGs are containerised in `airflow/Dockerfile` (extends `apache/airflow:2.10.4-python3.12`); bring the stack up with `docker compose -f airflow/docker-compose.yml up -d`, then open `http://localhost:8080` (admin / admin). DVC is now data-versioning only — the `dvc.yaml` file is empty and `dvc repro` is no longer used.
+
 ---
 
 ## What I'd do differently next time
@@ -364,4 +375,4 @@ Happy modeling.
 
 ---
 
-*Author: NullBitZer0. Tools used: Python 3.12, CatBoost 1.2, Feast 0.40, FastAPI 0.111, MLflow 3.11, DAGsHub, Apache Kafka 3.7, Postgres 16, Redis 7, React 18, Vite 5, Evidently 0.4, Pandera 0.31, GitHub Actions, Docker Compose, Optuna 4.0. Total lines of code (excluding notebooks): ~3,500.*
+*Author: NullBitZer0. Tools used: Python 3.12, CatBoost 1.2, Feast 0.40, FastAPI 0.111, MLflow 3.11, DAGsHub, Apache Kafka 3.7, Postgres 16, Redis 7, React 18, Vite 5, Evidently 0.4, Pandera 0.31, GitHub Actions, Docker Compose, Optuna 4.0, Apache Airflow 2.10. Total lines of code (excluding notebooks): ~4,000.*

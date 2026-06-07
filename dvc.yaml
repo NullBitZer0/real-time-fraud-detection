@@ -1,140 +1,17 @@
-# DVC pipeline for the Sparkov fraud-detection project.
-# Run with: dvc repro
-# Optuna is a separate, optional stage: dvc repro optuna_tune
-
-stages:
-  # ── 1. Load raw CSVs into Postgres ────────────────────────────────────────
-  ingest_postgres:
-    desc: "Load fraudTrain.csv + fraudTest.csv → fraud_detection.raw_transactions"
-    cmd: python -m src.components.data_ingestion_postgres
-    deps:
-      - data/raw/fraudTrain.csv
-      - data/raw/fraudTest.csv
-      - src/components/data_ingestion_postgres.py
-    # No `outs` (Postgres table) — DVC re-runs whenever the CSVs change.
-    always_changed: true
-
-  # ── 2. Build Feast parquet sources from the CSVs ──────────────────────────
-  feast_ingest:
-    desc: "Build sparkov_{cc,merchant,transaction}_features.parquet"
-    cmd: python -m src.components.data_ingestion_feast
-    deps:
-      - data/raw/fraudTrain.csv
-      - data/raw/fraudTest.csv
-      - src/components/feature_engineering.py
-      - src/components/data_ingestion_feast.py
-    outs:
-      - data/sparkov_cc_features.parquet
-      - data/sparkov_merchant_features.parquet
-      - data/sparkov_transaction_features.parquet
-
-  # ── 3. Apply Feast entity + feature-view definitions ─────────────────────
-  feast_apply:
-    desc: "Register Feast entities + feature views"
-    cmd: cd feast/feature_repo && feast apply
-    deps:
-      - feast/feature_repo/feature_store.yaml
-      - feast/feature_repo/features.py
-    outs:
-      - feast/feature_repo/data/registry.db
-    always_changed: true
-
-  # ── 4. Materialize online features (Postgres → Redis) ─────────────────────
-  feast_materialize:
-    desc: "Materialize cc_num_features + merchant_features → Redis"
-    cmd: >-
-      cd feast/feature_repo
-      && feast materialize
-      -v cc_num_features -v merchant_features
-      "2019-01-01T00:00:00" "2021-01-01T00:00:00"
-    deps:
-      - feast/feature_repo/data/registry.db
-    always_changed: true
-
-  # ── 5. Train CatBoost model (main pipeline) ──────────────────────────────
-  train:
-    desc: "Train CatBoost (tuned params) + 3-tier analysis + MLflow logging"
-    cmd: python -m pipelines.training_pipeline
-    deps:
-      - data/sparkov_cc_features.parquet
-      - data/sparkov_merchant_features.parquet
-      - data/sparkov_transaction_features.parquet
-      - pipelines/training_pipeline.py
-      - src/components/feature_engineering.py
-      - src/components/model_training.py
-      - src/components/model_evaluation.py
-      - src/components/data_validation.py
-      - src/components/mlflow_tracking.py
-      - configs/config.yaml
-    params:
-      - model.iterations
-      - model.depth
-      - model.learning_rate
-      - model.l2_leaf_reg
-      - model.random_strength
-      - model.bagging_temperature
-      - model.border_count
-      - model.early_stopping
-      - model.eval_metric
-      - model.random_seed
-      - data.val_quantile
-      - mlflow.experiment_name
-      - mlflow.run_name
-      - mlflow.register_model
-      - mlflow.registered_name
-    outs:
-      - models/catboost.cbm:
-          cache: false
-      - models/feature_engineering.pkl:
-          cache: false
-      - models/metadata.json:
-          cache: false
-    metrics:
-      - metrics/train_metrics.json:
-          cache: false
-
-  # ── 6. (Optional) Optuna tuning — separate stage, run on demand ───────────
-  optuna_tune:
-    desc: "Optional hyperparameter search via Optuna (run separately)"
-    cmd: python -m src.components.optuna_tuning --out models/optuna_best.json
-    deps:
-      - data/sparkov_transaction_features.parquet
-      - src/components/feature_engineering.py
-      - src/components/optuna_tuning.py
-      - configs/config.yaml
-    params:
-      - optuna.n_trials
-      - optuna.timeout_minutes
-    outs:
-      - models/optuna_best.json:
-          cache: false
-    always_changed: true
-
-  # ── 7. Evidently drift report — distribution shift between train and test ──
-  drift_report:
-    desc: "Generate Evidently HTML + JSON drift report (train vs test)"
-    cmd: python -m src.components.drift_report
-    deps:
-      - data/raw/fraudTrain.csv
-      - data/raw/fraudTest.csv
-      - src/components/drift_report.py
-    outs:
-      - metrics/drift_report.html:
-          cache: false
-      - metrics/drift_report.json:
-          cache: false
-
-  # ── 8. MLflow model promotion: Staging → Production (with metric gate) ─────
-  promote:
-    desc: "Promote Staging model to Production if test_pr_auc >= floor"
-    cmd: python -m src.components.mlflow_promote
-    deps:
-      - metrics/train_metrics.json
-      - src/components/mlflow_promote.py
-    params:
-      - mlflow.registered_name
-    outs:
-      - models/production_alias.json:
-          cache: false
-    always_changed: true
-
+# DVC is used in this project ONLY for data versioning (DAGsHub S3 remote).
+# Pipeline orchestration is handled by Apache Airflow (see airflow/dags/).
+#
+# DVC commands that still work:
+#   dvc add data/raw/<file>.csv     # register a file for tracking
+#   dvc push                        # upload the .dvc-tracked files to remote
+#   dvc pull                        # download the latest versioned data
+#
+# Orchestration (replaces `dvc repro`):
+#   Weekly retraining:   fraud_retraining DAG (Mon 00:00 UTC)
+#   Drift-triggered:     fraud_drift_check DAG (daily 06:00 UTC) → triggers
+#                        fraud_retraining when Evidently reports drift on
+#                        >= 5 features.
+#   Manual trigger:      POST /api/v1/dags/fraud_retraining/dagRuns
+#                        on the Airflow REST API.
+#
+# See airflow/README.md for the full architecture diagram.

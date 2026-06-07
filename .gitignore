@@ -63,3 +63,9 @@ Thumbs.db
 
 
 catboost_info/
+
+# ── Airflow ───────────────────────────────────────────────────────────────────
+.airflow_home/
+airflow/logs/
+airflow/dags/__pycache__/
+airflow/plugins/__pycache__/

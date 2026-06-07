@@ -91,10 +91,15 @@ cat <<'EOF'
 ║  🗄️   pgAdmin (Postgres)        http://localhost:5050        ║
 ║                                (admin@admin.com / admin)     ║
 ║  📦  RedisInsight (Redis)       http://localhost:5540        ║
+║  ✈️   Airflow UI                 http://localhost:8080        ║
+║                                (admin / admin)               ║
 ╚══════════════════════════════════════════════════════════════╝
 
 📋  Watch logs:    tail -f /tmp/api.log /tmp/frontend.log
 🛑  Stop demo:     pkill -f 'uvicorn|vite'
-📊  Re-train:      dvc repro
+🛑  Stop Airflow:  docker compose -f airflow/docker-compose.yml down
+🛑  Start Airflow: bash scripts/init_airflow.sh docker
+📅  Scheduled retrain: Mon 00:00 UTC (fraud_retraining DAG)
+🔍  Daily drift check: 06:00 UTC   (fraud_drift_check DAG)
 🔗  MLflow runs:   https://dagshub.com/NullBitZer0/real-time-fraud-detection.mlflow
 EOF

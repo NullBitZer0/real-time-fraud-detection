@@ -11,6 +11,7 @@ Exits 0 on success, prints a clear error and exits 1 on failure.
 """
 import os
 import sys
+
 import boto3
 
 

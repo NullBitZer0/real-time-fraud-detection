@@ -10,9 +10,72 @@ End-to-end demo: trains a fraud-detection model on the **Sparkov** dataset
 inference pipeline, fetches online features from a **Feast** feature store
 (Redis online + file/DuckDB offline), and streams 100-test demo runs
 through **Kafka** (KRaft). Experiments + model registry
-are tracked on **DAGsHub MLflow**; CI/CD runs on **GitHub Actions**.
+are tracked on **DAGsHub MLflow**; CI/CD runs on **GitHub Actions**;
+orchestration of periodic + drift-triggered retraining is handled by **Apache Airflow**.
 
-> **Next Updates.** Add airflow as a orchastrator —  periodic retraining , production-grade monitoring woth promethus and grafana.also add drift detection with evidently.ETL also will with spark
+---
+## Architecture
+
+```
+                 ┌────────────────────────────────────────────────────────────┐
+                 │                     Sparkov dataset                        │
+                 │  data/raw/fraudTrain.csv  +  data/raw/fraudTest.csv        │
+                 └────────────┬───────────────────────────────────────────────┘
+                              │  DVC (data versioning only)
+                              ▼
+   ┌─────────────────────  PostgreSQL  ─────────────────────┐
+   │  fraud_detection.raw_transactions  (1.85M rows)         │
+   │  + decision_log (audit)                                 │
+   └────────────────────┬────────────────────────────────────┘
+                        │  feast_ingest (one-shot, no longer in pipeline)
+                        ▼
+   ┌─────────────  Parquet sources  ─────────────┐
+   │  data/sparkov_{transaction,cc,merchant}_features.parquet
+   └────┬──────────────────┬────────────────────┘
+        │                  │
+        │                  ▼
+        │         ┌──────────────────┐
+        │         │  Feast registry  │
+        │         └────────┬─────────┘
+        │                  ▼
+        │         ┌──────────────────┐
+        │         │      Redis       │ ◄───── online features
+        │         └────────┬─────────┘   (per-cc_num + per-merchant)
+        │                  │
+        │  Airflow: train  │
+        ▼                  ▼
+   ┌──────────────────────────┐
+   │   CatBoost (32 features) │ ──► models/catboost.cbm
+   │   + 3-tier thresholds    │ ──► models/metadata.json
+   └────────────┬─────────────┘ ──► models/feature_engineering.pkl
+                │
+                ▼
+   ┌──────────────────────────┐         ┌──────────────────────────┐
+   │   FastAPI  (api/app.py)  │  ───►   │ React (port 5173)        │
+   │   /predict /demo/run-100 │         │  • Live transaction feed │
+   │   /metrics /ws           │         │  • 100-test demo results │
+   └──────────────────────────┘         └──────────────────────────┘
+
+   ┌──────────────────────────┐         ┌────────────────────────────┐
+   │   Kafka (KRaft, 9094)    │         │  Apache Airflow            │
+   │   topic: fraud-transactions        │  fraud_drift_check (daily)  │
+   │   topic: fraud-decisions │         │  fraud_retraining  (weekly)│
+   │   kf/producer.py + kf/consumer.py  │  + drift-triggered branch  │
+   └──────────────────────────┘         └────────────────────────────┘
+```
+
+### Orchestration: DVC vs Airflow
+
+DVC is now **data-versioning only** (the `dvc.yaml` pipeline definition is
+empty — see the file's header). The retraining pipeline is owned by Apache
+Airflow in `airflow/dags/`:
+
+| DAG id                | Schedule          | Purpose                                                |
+|-----------------------|-------------------|--------------------------------------------------------|
+| `fraud_retraining`    | `0 0 * * 1` (Mon) | Full retrain + promotion (with metric gate)            |
+| `fraud_drift_check`   | `0 6 * * *`       | Daily Evidently drift check; triggers retraining DAG   |
+
+See [`airflow/README.md`](airflow/README.md) for the full architecture.
 
 ---
 
@@ -82,8 +145,8 @@ Or manually:
 # 1. Start all infrastructure
 docker compose up -d postgres redis kafka prometheus grafana
 
-# 2. Run the full DVC pipeline (ingest → feast → train)
-dvc repro
+# 2. Start Airflow (orchestrates retraining)
+bash scripts/init_airflow.sh docker
 
 # 3. Start the API
 python -m uvicorn api.app:app --host 0.0.0.0 --port 8000
@@ -101,6 +164,7 @@ Then open:
 - `http://localhost:3000` — **Unified React dashboard** (7 tabs: Live, Demo, Monitoring, Drift, Health, Audit, MLflow)
 - `http://localhost:8000/docs` — FastAPI Swagger
 - `http://localhost:3001` — Grafana monitoring dashboards
+- `http://localhost:8080` — **Airflow UI** (login: `admin` / `admin`)
 - `http://localhost:9090` — Prometheus UI
 - `http://localhost:5540` — RedisInsight (Redis UI)
 - `http://localhost:5050` — pgAdmin (Postgres UI, login: `admin@admin.com` / `admin`)
@@ -146,45 +210,81 @@ VITE_DAGSHUB_REPO=real-time-fraud-detection
 
 ---
 
-## DVC pipeline
+## Orchestration (Apache Airflow)
+
+Model retraining is owned by **Apache Airflow**, not `dvc repro`. DVC is now
+used **only for data versioning** (the `dvc.yaml` file is empty — its header
+explains).
+
+### DAGs
 
 ```
-ingest_postgres  ─►  feast_ingest  ─►  train  ─►  metrics/train_metrics.json
-                       │
-                       └────────►  optuna_tune  (run separately)
-                       │
-                       └────────►  feast_apply  ─►  feast_materialize  (Redis)
+       ┌─────────────────────┐
+       │  fraud_drift_check  │  daily 06:00 UTC
+       │  (Drift watcher)    │  runs Evidently
+       └──────────┬──────────┘
+                  │ TriggerDagRunOperator (only if drift > threshold)
+                  ▼
+       ┌─────────────────────┐         ┌────────────────────┐
+       │  fraud_retraining   │ ◀────── │ weekly Mon 00:00   │
+       │  (Main retrain DAG) │         │ schedule           │
+       └──────────┬──────────┘         └────────────────────┘
+                  │
+                  ├── generate_drift_report
+                  ├── decide_path (branch on drift threshold)
+                  ├── retrain (task group)
+                  │     ├── pull_data        (dvc pull from DAGsHub S3)
+                  │     ├── train_model      (pipelines.training_pipeline)
+                  │     ├── metric_gate      (refuses if test_pr_auc < 0.78)
+                  │     ├── promote          (mlflow_promote, gated vs current Production)
+                  │     └── refresh_feast    (feast apply + materialize)
+                  └── notify
 ```
 
-| Stage | Command | Description |
-|---|---|---|
-| `ingest_postgres` | `python -m src.components.data_ingestion_postgres` | CSVs → `fraud_detection.raw_transactions` (COPY, ~30s) |
-| `feast_ingest` | `python -m src.components.data_ingestion_feast` | Build `data/sparkov_*.parquet` (32 features) |
-| `feast_apply` | `cd feast/feature_repo && feast apply` | Register entities + feature views |
-| `feast_materialize` | `feast materialize -v cc_num_features -v merchant_features ...` | Postgres → Redis (999 cards + 693 merchants) |
-| `train` | `python -m pipelines.training_pipeline` | CatBoost baseline + 3-tier analysis |
-| `optuna_tune` | `python -m src.components.optuna_tuning` | Optional: hyperparameter search (run separately) |
+### Quick start
 
-Useful commands:
 ```bash
-dvc repro                     # run all stages
-dvc repro train               # run only train
-dvc repro drift_report        # Evidently HTML drift report
-dvc repro promote             # Staging → Production (with metric gate)
-dvc repro optuna_tune -f      # force Optuna tuning
-dvc metrics show              # show test_pr_auc, f1@T2, etc.
-dvc dag                       # show pipeline graph
-dvc push                      # push parquet + model artifacts to DAGsHub S3
+# Build + run Airflow (Postgres + webserver + scheduler)
+docker compose -f airflow/docker-compose.yml up -d
+# Or:
+bash scripts/init_airflow.sh docker
+
+# Open http://localhost:8080 (admin / admin)
+# DAGs are picked up automatically from airflow/dags/
 ```
 
-The full DVC DAG:
+### Manual trigger
 
+```bash
+# Trigger via REST API
+curl -X POST http://localhost:8080/api/v1/dags/fraud_retraining/dagRuns \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d '{"conf": {"trigger_source": "manual"}}'
+
+# Or via the Airflow UI: open the DAG, click ▶ Trigger DAG
 ```
-ingest_postgres ─► feast_ingest ─► train ─► promote
-                       │                            ▲
-                       ├─► drift_report             │ (metric gate)
-                       └─► feast_apply ─► feast_materialize
+
+### Tunable variables
+
+Both DAGs read from Airflow Variables (set in the UI under Admin → Variables):
+
+| Variable name             | Default | Meaning                                          |
+|---------------------------|---------|--------------------------------------------------|
+| `drift_feature_threshold` | `5`     | # of drifted features that trigger a retrain     |
+| `promotion_metric_floor`  | `0.78`  | Min test PR-AUC to allow a model into Production |
+
+### Local dev (Airflow on the host, not Docker)
+
+```bash
+pip install apache-airflow==2.10.4
+export AIRFLOW_HOME=$(pwd)/.airflow_home
+export PROJECT_ROOT=$(pwd)
+export AIRFLOW__CORE__DAGS_FOLDER=$(pwd)/airflow/dags
+bash scripts/init_airflow.sh local
 ```
+
+See [`airflow/README.md`](airflow/README.md) for the full docs.
 
 ---
 
@@ -357,8 +457,14 @@ joins them with the row's own transaction features before scoring.
 ├── api/                    FastAPI app
 │   ├── app.py              /health, /predict, /demo/run-100-tests, /metrics, /ws
 │   └── schema.py           Pydantic models
+├── airflow/                Apache Airflow (orchestration)
+│   ├── dags/
+│   │   ├── fraud_retraining.py   weekly + drift-trigger retraining DAG
+│   │   └── drift_check.py        daily drift watcher DAG
+│   ├── Dockerfile          extends apache/airflow:2.10.4-python3.12
+│   └── docker-compose.yml  Postgres + webserver + scheduler
 ├── data/
-│   ├── raw/                fraudTrain.csv, fraudTest.csv
+│   ├── raw/                fraudTrain.csv, fraudTest.csv (+ .dvc pointers)
 │   └── sparkov_*.parquet   Feast offline store sources
 ├── feast/feature_repo/
 │   ├── feature_store.yaml  Redis (online) + file (offline) + Postgres
@@ -375,13 +481,22 @@ joins them with the row's own transaction features before scoring.
 ├── src/
 │   ├── components/             data_ingestion*, feature_engineering, model_*, feature_store
 │   └── entity/                 config_entity, artifact_entity
-├── tests/test_parity.py    production model sanity check
+├── scripts/
+│   ├── demo.sh             one-command demo launcher
+│   ├── demo-stop.sh        kill all demo processes
+│   ├── init_airflow.sh     initialize Airflow (docker or local)
+│   └── s3_smoke_test.py    boto3 S3 HEAD verification
+├── tests/
+│   ├── test_api.py         FastAPI integration tests (8 endpoints)
+│   ├── test_parity.py      production model sanity check
+│   └── test_feast_online.py   Feast online feature store test
 ├── configs/                Hydra config (model + data + optuna)
 ├── models/                 catboost.cbm + metadata.json + feature_engineering.pkl
-├── metrics/                DVC metrics (train_metrics.json)
-├── dvc.yaml                DVC pipeline definition
+├── metrics/                train_metrics.json + drift_report.{html,json}
+├── dvc.yaml                (empty header — DVC = data versioning only)
 ├── docker-compose.yml      postgres + redis + kafka (KRaft) + UI tools
-└── params.yaml             DVC-tracked params (model.iterations, optuna.n_trials, ...)
+├── params.yaml             Hydra-tracked params (model.iterations, optuna.n_trials, ...)
+└── ruff.toml               project lint config
 ```
 
 ---
@@ -389,11 +504,18 @@ joins them with the row's own transaction features before scoring.
 ## Common tasks
 
 ```bash
-# Re-train only
-dvc repro train
+# Trigger a retrain (Airflow)
+curl -X POST http://localhost:8080/api/v1/dags/fraud_retraining/dagRuns \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d '{"conf": {"trigger_source": "manual"}}'
+# Or click ▶ Trigger DAG in http://localhost:8080
 
-# Tune hyperparameters (separate stage)
-dvc repro optuna_tune -f --set-param optuna.n_trials=50
+# Run a one-off training (bypasses Airflow)
+python -m pipelines.training_pipeline
+
+# Tune hyperparameters (standalone)
+python -m src.components.optuna_tuning --out models/optuna_best.json
 
 # Re-apply + re-materialize Feast (after editing features.py)
 cd feast/feature_repo && feast apply
@@ -404,10 +526,16 @@ python -m pipelines.prediction_pipeline          # 5-row sanity check
 python -m tests.test_parity --n 2000             # full parity test
 python -m kf.test_100 --broker localhost:9094    # 100-test Kafka demo
 
+# DVC data versioning only (no pipeline)
+dvc pull                                             # fetch latest raw CSVs from DAGsHub S3
+dvc push                                             # upload local changes
+dvc add data/raw/new_file.csv                        # track a new file
+
 # Inspect Feast online store
 redis-cli -h localhost KEYS '*cc_num*' | head -3
 
 # Stop everything
 docker compose down
+docker compose -f airflow/docker-compose.yml down
 ```
 test cicd
