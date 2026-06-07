@@ -410,3 +410,4 @@ redis-cli -h localhost KEYS '*cc_num*' | head -3
 # Stop everything
 docker compose down
 ```
+test cicd
