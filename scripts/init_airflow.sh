@@ -19,7 +19,25 @@ MODE="${1:-docker}"
 case "$MODE" in
     docker)
         echo "🐳 Starting Airflow stack via Docker..."
-        docker compose -f airflow/docker-compose.yml up -d
+
+        # Load .env FIRST so docker compose sees DAGSHUB_*, MLFLOW_*, etc.
+        # Without this, DAGsHub/MLflow tasks will fail with 401 Unauthorized.
+        if [[ -f .env ]]; then
+            set -a
+            # shellcheck disable=SC1091
+            source .env
+            set +a
+            echo "✓ Loaded .env (DAGSHUB_*, MLFLOW_TRACKING_URI)"
+        else
+            echo "⚠️  No .env file found — DAGsHub / MLflow will not be reachable"
+            echo "   (this is fine for Airflow itself; only matters for DAG tasks)"
+        fi
+
+        # Run with --env-file as belt-and-braces in case any var was missed
+        docker compose \
+            --env-file .env \
+            -f airflow/docker-compose.yml \
+            up -d 2>&1 | grep -v "WARN\[0000\]" || true
         echo ""
         echo "✓ Airflow is running at http://localhost:8080"
         echo "  user: admin"

@@ -32,19 +32,20 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
-    PYTHONPATH: "/opt/airflow/project:${PYTHONPATH}"
+    PYTHONPATH: "/opt/airflow/project"
     PROJECT_ROOT: "/opt/airflow/project"
     # Project-level env (DAGsHub, MLflow, DVC remote) — read by the project's
     # .env file inside tasks via python-dotenv. We still pass the most critical
     # ones explicitly so Airflow itself (scheduler, webserver) can reach the
-    # MLflow tracker.
-    DAGSHUB_REPO_OWNER: ${DAGSHUB_REPO_OWNER}
-    DAGSHUB_REPO_NAME:  ${DAGSHUB_REPO_NAME}
-    DAGSHUB_TOKEN:      ${DAGSHUB_TOKEN}
-    MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-    AWS_ACCESS_KEY_ID:    ${DAGSHUB_TOKEN}
-    AWS_SECRET_ACCESS_KEY: ${DAGSHUB_TOKEN}
-    AWS_ENDPOINT_URL_S3:  https://dagshub.com/api/v1/repos/${DAGSHUB_REPO_OWNER}/${DAGSHUB_REPO_NAME}/storage/raw/s3
+    # MLflow tracker. Defaults are blank so missing-vars don't print warnings
+    # (the DAGs themselves will report an error if a var is actually required).
+    DAGSHUB_REPO_OWNER: ${DAGSHUB_REPO_OWNER:-}
+    DAGSHUB_REPO_NAME:  ${DAGSHUB_REPO_NAME:-}
+    DAGSHUB_TOKEN:      ${DAGSHUB_TOKEN:-}
+    MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-https://dagshub.com/${DAGSHUB_REPO_OWNER:-}/${DAGSHUB_REPO_NAME:-}.mlflow}
+    AWS_ACCESS_KEY_ID:    ${DAGSHUB_TOKEN:-}
+    AWS_SECRET_ACCESS_KEY: ${DAGSHUB_TOKEN:-}
+    AWS_ENDPOINT_URL_S3:  https://dagshub.com/api/v1/repos/${DAGSHUB_REPO_OWNER:-}/${DAGSHUB_REPO_NAME:-}/storage/raw/s3
   volumes:
     - ../:/opt/airflow/project
     - airflow_logs:/opt/airflow/logs
