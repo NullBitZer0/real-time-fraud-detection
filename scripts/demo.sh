@@ -45,6 +45,9 @@ fi
 
 # ── 3. Start FastAPI in background ────────────────────────────────────────────
 echo "▶ Starting FastAPI (uvicorn on :8000)…"
+# Kill stale API processes first
+pkill -f 'uvicorn api.app' 2>/dev/null || true
+sleep 1
 mkdir -p /tmp
 setsid python -m uvicorn api.app:app --host 0.0.0.0 --port 8000 --log-level info \
   > /tmp/api.log 2>&1 < /dev/null &
@@ -53,6 +56,9 @@ disown
 
 # ── 4. Start React dev server in background ───────────────────────────────────
 echo "▶ Starting React dashboard (vite on :3000)…"
+# Free up port 3000-3002 (stale vite processes from previous runs)
+lsof -ti:3000 -ti:3001 -ti:3002 2>/dev/null | xargs kill -9 2>/dev/null || true
+sleep 1
 cd "$ROOT/frontend"
 setsid npm run dev > /tmp/frontend.log 2>&1 < /dev/null &
 FRONTEND_PID=$!

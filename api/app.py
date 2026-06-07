@@ -19,7 +19,9 @@ import psycopg2
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sklearn.metrics import confusion_matrix, f1_score
+from starlette.responses import Response
 
 from api.schema import (
     AuditRow,
@@ -36,6 +38,13 @@ from src.components.audit_log import insert_decision
 from src.components.data_ingestion import read_sparkov_split
 from src.components.schema_validation import validate_transactions
 from src.utils.logger import logging
+
+# Prometheus metrics — defined once at module level to avoid
+# "Duplicated timeseries in CollectorRegistry" errors.
+METRIC_PREDS_TOTAL = Counter("fraud_predictions_total", "Total /predict calls")
+METRIC_PREDS_FRAUD = Counter("fraud_predictions_fraud_total", "Predictions flagged as fraud (tier >= 1)")
+METRIC_LATENCY     = Histogram("fraud_prediction_latency_ms", "Latency in ms",
+                                buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000))
 
 
 # ── WebSocket connection manager ──────────────────────────────────────────────
@@ -183,29 +192,6 @@ async def readyz(request: Request):
 @app.get("/metrics/prom", tags=["System"])
 async def prometheus_metrics(request: Request):
     """Prometheus-format metrics — total/fraud counters + latency histogram."""
-    from prometheus_client import (
-        CONTENT_TYPE_LATEST,
-        Counter,
-        Histogram,
-        generate_latest,
-    )
-    from starlette.responses import Response
-
-    stats = request.app.state.stats
-    lats  = stats["latencies"]
-    total = stats["total"]
-    fraud = stats["fraud"]
-
-    c_total = Counter("fraud_predictions_total", "Total /predict calls")
-    c_fraud = Counter("fraud_predictions_fraud_total", "Predictions flagged as fraud (tier >= 1)")
-    h_lat   = Histogram("fraud_prediction_latency_ms", "Latency in ms",
-                          buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000))
-
-    c_total.inc(total)
-    c_fraud.inc(fraud)
-    for lat in lats[-1000:]:  # only emit the last 1000 to keep payload small
-        h_lat.observe(lat)
-
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -244,6 +230,12 @@ async def predict(transaction: TransactionRequest, request: Request):
     stats["latencies"].append(latency_ms)
     if len(stats["latencies"]) > 5000:
         stats["latencies"].pop(0)
+
+    # Prometheus counters (module-level, no duplicates)
+    METRIC_PREDS_TOTAL.inc()
+    if pred:
+        METRIC_PREDS_FRAUD.inc()
+    METRIC_LATENCY.observe(latency_ms)
 
     # Audit log → Postgres
     try:
