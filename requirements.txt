@@ -13,6 +13,9 @@ mlflow==3.11.1
 hydra-core
 dvc
 dagshub==0.7.0
+pandera==0.31.1
+prometheus-client==0.24.1
+python-dotenv>=1.0.0
 fastapi 
 uvicorn
 evidently
