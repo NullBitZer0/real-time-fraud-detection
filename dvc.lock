@@ -148,3 +148,27 @@ stages:
       hash: md5
       md5: b52598c3a1052dc91b6e527308b422c3
       size: 1652
+  drift_report:
+    cmd: python -m src.components.drift_report
+    deps:
+    - path: data/raw/fraudTest.csv
+      hash: md5
+      md5: 692357a2589a1a6fcd44f14b3e1f9d2c
+      size: 150354339
+    - path: data/raw/fraudTrain.csv
+      hash: md5
+      md5: 9723893e5492dc0551036edcf596e284
+      size: 351238196
+    - path: src/components/drift_report.py
+      hash: md5
+      md5: 2942b27e0879d58bde12d0c9f95a22a8
+      size: 3245
+    outs:
+    - path: metrics/drift_report.html
+      hash: md5
+      md5: 33277dc100178b2b2a6896ac1ce5ac0a
+      size: 4253476
+    - path: metrics/drift_report.json
+      hash: md5
+      md5: 00b42a1e60801d037cf162f6e0a2b225
+      size: 2671

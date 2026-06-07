@@ -27,6 +27,8 @@ from api.schema import (
 )
 from pipelines.prediction_pipeline import PredictionPipeline
 from src.components.data_ingestion import read_sparkov_split
+from src.components.audit_log       import ensure_table as audit_ensure, insert_decision
+from src.components.schema_validation import validate_transactions
 from src.utils.logger import logging
 
 
@@ -115,6 +117,89 @@ async def health(request: Request):
     )
 
 
+# ── /readyz ───────────────────────────────────────────────────────────────────
+@app.get("/readyz", tags=["System"])
+async def readyz(request: Request):
+    """Readiness probe — model + Redis + Postgres + Feast all reachable."""
+    checks = {}
+    overall_ok = True
+
+    # 1. Model
+    p = request.app.state.pipeline
+    checks["model"] = {"ok": p is not None}
+    if p is None:
+        overall_ok = False
+
+    # 2. Redis (decision cache + Feast online store)
+    try:
+        if p is not None and p.redis is not None:
+            p.redis.ping()
+        checks["redis"] = {"ok": True}
+    except Exception as e:
+        checks["redis"] = {"ok": False, "error": str(e)}
+        # Redis is optional — don't fail the whole readiness check
+        # overall_ok = False
+
+    # 3. Postgres (audit log)
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.environ.get("POSTGRES_HOST", "localhost"),
+            port=int(os.environ.get("POSTGRES_PORT", 5432)),
+            user=os.environ.get("POSTGRES_USER", "feast"),
+            password=os.environ.get("POSTGRES_PASSWORD", "feast"),
+            dbname=os.environ.get("POSTGRES_DB", "feast"),
+        )
+        conn.close()
+        checks["postgres"] = {"ok": True}
+    except Exception as e:
+        checks["postgres"] = {"ok": False, "error": str(e)}
+        overall_ok = False
+
+    # 4. Feast
+    try:
+        if p is not None and p.fsc is not None:
+            p.fsc.store.get_feature_server()
+        checks["feast"] = {"ok": True}
+    except Exception as e:
+        checks["feast"] = {"ok": False, "error": str(e)}
+        # Feast is optional
+        # overall_ok = False
+
+    return {
+        "ready":   overall_ok,
+        "checks":  checks,
+        "version": "2.1.0",
+    }
+
+
+# ── /metrics/prom ────────────────────────────────────────────────────────────
+@app.get("/metrics/prom", tags=["System"])
+async def prometheus_metrics(request: Request):
+    """Prometheus-format metrics — total/fraud counters + latency histogram."""
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest,
+    )
+    from starlette.responses import Response
+
+    stats = request.app.state.stats
+    lats  = stats["latencies"]
+    total = stats["total"]
+    fraud = stats["fraud"]
+
+    c_total = Counter("fraud_predictions_total", "Total /predict calls")
+    c_fraud = Counter("fraud_predictions_fraud_total", "Predictions flagged as fraud (tier >= 1)")
+    h_lat   = Histogram("fraud_prediction_latency_ms", "Latency in ms",
+                          buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000))
+
+    c_total.inc(total)
+    c_fraud.inc(fraud)
+    for lat in lats[-1000:]:  # only emit the last 1000 to keep payload small
+        h_lat.observe(lat)
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 # ── /predict ──────────────────────────────────────────────────────────────────
 @app.post("/predict", response_model=FraudResponse, tags=["Inference"])
 async def predict(transaction: TransactionRequest, request: Request):
@@ -128,6 +213,13 @@ async def predict(transaction: TransactionRequest, request: Request):
     t0  = time.perf_counter()
     row = transaction.model_dump()
     df  = pd.DataFrame([row])
+
+    # Schema contract (Pandera) — coerce bad types, log warnings, never block
+    try:
+        df = validate_transactions(df)
+    except Exception as e:
+        logging.warning(f"schema validation failed: {e} — passing through")
+
     out = pipeline.predict(df)
     latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -136,6 +228,7 @@ async def predict(transaction: TransactionRequest, request: Request):
     action = str  (out["action"].iloc[0])
     pred   = int  (tier >= 1)  # tier 1+ = flagged (T1 auto_block / T2 review / T3 soft_signal)
     txn_id = str  (out["transaction_id"].iloc[0])
+    threshold = float(out["threshold"].iloc[0])
 
     stats["total"] += 1
     stats["fraud"] += pred
@@ -143,13 +236,24 @@ async def predict(transaction: TransactionRequest, request: Request):
     if len(stats["latencies"]) > 5000:
         stats["latencies"].pop(0)
 
+    # Audit log → Postgres
+    try:
+        insert_decision(
+            trans_num=txn_id, proba=prob, tier=tier, action=action, threshold=threshold,
+            latency_ms=latency_ms,
+            request_ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except Exception as e:
+        logging.warning(f"audit_log insert failed: {e}")
+
     response = FraudResponse(
         transaction_id    = txn_id,
         fraud_probability = round(prob, 4),
         fraud_prediction  = pred,
         tier              = tier,
         action            = action,
-        threshold_used    = float(out["threshold"].iloc[0]),
+        threshold_used    = threshold,
         latency_ms        = round(latency_ms, 2),
     )
     await manager.broadcast(response.model_dump())
