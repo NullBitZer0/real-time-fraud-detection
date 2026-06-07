@@ -123,7 +123,11 @@ class MLflowTracker:
                 logging.error(f"Model logging failed entirely: {e2}")
 
     def register_model(self, model_uri: str, registered_name: str, stage: str = "Staging"):
-        """Push a logged model to the MLflow Model Registry."""
+        """Push a logged model to the MLflow Model Registry.
+
+        Uses the legacy stage-transition API because DAGsHub's MLflow backend
+        supports it but the newer `set_registered_model_alias` may not persist.
+        """
         if not self.cfg.get("register_model", False):
             return
         try:
@@ -140,22 +144,12 @@ class MLflowTracker:
                 source=model_uri,
                 run_id=self.run.info.run_id,
             )
-            # MLflow 2.9+ / 3.x: use transition_model_version_stage (still works) or
-            # the newer set_registered_model_alias / transition_model_version_stage.
-            try:
-                client.set_registered_model_alias(
-                    registered_name, alias=stage, version=mv.version,
-                )
-            except Exception:
-                # Fallback to legacy stage API
-                try:
-                    client.transition_model_version_stage(
-                        name=registered_name, version=mv.version, stage=stage,
-                        archive_existing_versions=(stage == "Production"),
-                    )
-                except Exception:
-                    pass
-            logging.info(f"MLflow: registered v{mv.version} of '{registered_name}' as @{stage}")
+            # DAGsHub: legacy stage transition is the reliable API
+            client.transition_model_version_stage(
+                name=registered_name, version=mv.version, stage=stage,
+                archive_existing_versions=(stage == "Production"),
+            )
+            logging.info(f"MLflow: registered v{mv.version} of '{registered_name}' @ {stage}")
         except Exception as e:
             logging.warning(f"Model registration failed: {e}")
 
