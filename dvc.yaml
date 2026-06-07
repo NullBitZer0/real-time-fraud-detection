@@ -109,3 +109,32 @@ stages:
       - models/optuna_best.json:
           cache: false
     always_changed: true
+
+  # ── 7. Evidently drift report — distribution shift between train and test ──
+  drift_report:
+    desc: "Generate Evidently HTML + JSON drift report (train vs test)"
+    cmd: python -m src.components.drift_report
+    deps:
+      - data/raw/fraudTrain.csv
+      - data/raw/fraudTest.csv
+      - src/components/drift_report.py
+    outs:
+      - metrics/drift_report.html:
+          cache: false
+      - metrics/drift_report.json:
+          cache: false
+
+  # ── 8. MLflow model promotion: Staging → Production (with metric gate) ─────
+  promote:
+    desc: "Promote Staging model to Production if test_pr_auc >= floor"
+    cmd: python -m src.components.mlflow_promote
+    deps:
+      - metrics/train_metrics.json
+      - src/components/mlflow_promote.py
+    params:
+      - mlflow.registered_name
+    outs:
+      - models/production_alias.json:
+          cache: false
+    always_changed: true
+
