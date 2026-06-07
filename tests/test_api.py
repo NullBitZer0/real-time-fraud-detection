@@ -114,6 +114,29 @@ def main():
             results["failed"] += 1
             fail_messages.append(f"/metrics status={r.status_code}")
 
+        # ── /readyz ────────────────────────────────────────────────────────────
+        r = client.get("/readyz")
+        if r.status_code == 200:
+            body = r.json()
+            print(f"  /readyz        → {r.status_code}  ready={body['ready']}  checks={list(body['checks'].keys())}")
+            if body.get("ready") is not None:
+                results["passed"] += 1
+            else:
+                results["failed"] += 1
+                fail_messages.append("/readyz missing 'ready' field")
+        else:
+            results["failed"] += 1
+            fail_messages.append(f"/readyz status={r.status_code}")
+
+        # ── /metrics/prom ──────────────────────────────────────────────────────
+        r = client.get("/metrics/prom")
+        if r.status_code == 200 and "fraud_predictions_total" in r.text:
+            print(f"  /metrics/prom  → {r.status_code}  bytes={len(r.text)}  has_counter=True")
+            results["passed"] += 1
+        else:
+            results["failed"] += 1
+            fail_messages.append(f"/metrics/prom status={r.status_code}")
+
     # ── Summary ────────────────────────────────────────────────────────────────
     print("-" * 60)
     print(f"PASS: {results['passed']}    FAIL: {results['failed']}")
