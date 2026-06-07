@@ -35,15 +35,27 @@ jobs:
 
       - name: Download Sparkov dataset (DVC → DAGsHub S3)
         env:
-          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
-          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
-          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+          DAGSHUB_TOKEN:           ${{ secrets.DAGSHUB_TOKEN }}
+          # Standard boto3 env vars — DVC's S3 backend picks these up automatically
+          AWS_ACCESS_KEY_ID:       ${{ secrets.DAGSHUB_TOKEN }}
+          AWS_SECRET_ACCESS_KEY:   ${{ secrets.DAGSHUB_TOKEN }}
+          AWS_ENDPOINT_URL_S3:     https://dagshub.com/${{ secrets.DAGSHUB_REPO_OWNER }}/${{ secrets.DAGSHUB_REPO_NAME }}.s3
         run: |
           mkdir -p data/raw
-          # Configure DVC remote with secrets
-          dvc remote modify origin access_key_id  "${DAGSHUB_TOKEN}"
-          dvc remote modify origin secret_access_key "${DAGSHUB_TOKEN}"
-          # Pull only the raw CSVs (~502 MB combined)
+          echo "▶ DAGSHUB_TOKEN length: ${#DAGSHUB_TOKEN}"
+          echo "▶ AWS_ACCESS_KEY_ID first 8: ${AWS_ACCESS_KEY_ID:0:8}..."
+          echo "▶ AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}"
+          # Verify S3 reachability with a quick HEAD
+          python -c "
+import os, boto3
+c = boto3.client('s3', endpoint_url=os.environ['AWS_ENDPOINT_URL_S3'])
+try:
+    c.head_object(Bucket='dvc', Key='files/md5/4c/59edef30962764922a9893fb5f5cd4')
+    print('  ✓ S3 HEAD OK')
+except Exception as e:
+    print(f'  ✗ S3 HEAD failed: {e}')
+    raise SystemExit(1)
+          "
           dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv --force
           ls -lh data/raw/
 
