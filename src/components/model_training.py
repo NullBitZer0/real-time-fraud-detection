@@ -1,10 +1,12 @@
 """Model training for the Sparkov pipeline.
 
-Trains a single CatBoost classifier with the baseline hyperparameters
-(iterations=500, depth=8, learning_rate=0.05). The model is fit on the
-full training set and evaluated on val + test. The trained model and
-metadata (feature list, tier thresholds, encoder state) are saved to
-models/ for the prediction pipeline to use.
+Trains a CatBoost classifier with the tuned hyperparameters from
+`models/optuna_best.json` (or whatever params are passed in).
+The model is fit on the full training set, evaluated on val + test,
+and the trained model + metadata (feature list, tier thresholds,
+encoder state) are saved to models/ for the prediction pipeline.
+
+Metrics and the model artifact are also logged to MLflow (DAGsHub-backed).
 """
 import os
 import sys
@@ -33,6 +35,22 @@ TIER_THRESHOLDS = {
 }
 
 
+def build_catboost_params(cfg_model: dict) -> dict:
+    """Build a CatBoostClassifier kwargs dict from the Hydra config.
+
+    Only includes params that are valid for `CatBoostClassifier.__init__`.
+    `early_stopping` is excluded — it belongs to `fit()`, not the constructor.
+    """
+    keys = [
+        "iterations", "depth", "learning_rate", "l2_leaf_reg",
+        "random_strength", "bagging_temperature", "border_count",
+        "eval_metric", "random_seed", "task_type",
+    ]
+    params = {k: cfg_model[k] for k in keys if k in cfg_model}
+    params.setdefault("verbose", 0)
+    return params
+
+
 class ModelTrainer:
 
     def __init__(self, model_dir: str = "models"):
@@ -42,27 +60,46 @@ class ModelTrainer:
         self.feat_path  = os.path.join(model_dir, "feature_engineering.pkl")
         os.makedirs(model_dir, exist_ok=True)
 
-    def initiate_model_training(self, X_train, y_train, X_val, y_val, X_test, y_test,
-                                  feature_engineer=None):
+    def initiate_model_training(self,
+                                  X_train, y_train, X_val, y_val, X_test, y_test,
+                                  feature_engineer=None,
+                                  catboost_params: dict = None,
+                                  mlflow_tracker = None):
         """
         Args:
-            X_train, y_train : training features and labels (numpy arrays or DataFrame)
+            X_train, y_train : training features and labels
             X_val, y_val     : validation features and labels
             X_test, y_test   : test features and labels
-            feature_engineer : fitted FeatureEngineering instance (persisted for inference)
+            feature_engineer : fitted FeatureEngineering instance
+            catboost_params  : kwargs for CatBoostClassifier
+                               (default: tuned from configs/model/catboost.yaml)
+            mlflow_tracker   : optional MLflowTracker (logs params/metrics/artifacts)
 
         Returns:
             dict with metrics + paths to saved artifacts
         """
-        logging.info("CatBoost training started (baseline, 500 iter, depth=8)")
+        if catboost_params is None:
+            catboost_params = build_catboost_params({
+                "iterations": 307, "depth": 10,
+                "learning_rate": 0.14757878491291962,
+                "l2_leaf_reg": 19.613363614465985,
+                "random_strength": 1.2157708813939343,
+                "bagging_temperature": 1.1713021441934048,
+                "border_count": 192,
+                "eval_metric": "PRAUC",
+                "early_stopping": 50,
+                "random_seed": 42,
+                "task_type": "CPU",
+            })
+
+        logging.info(f"CatBoost training started — {catboost_params}")
         try:
             t0 = time.time()
-            model = CatBoostClassifier(
-                iterations=500, depth=8, learning_rate=0.05,
-                eval_metric="PRAUC", random_seed=42, verbose=0,
-                early_stopping_rounds=50, task_type="CPU",
-            )
-            model.fit(X_train, y_train, eval_set=(X_val, y_val))
+            model = CatBoostClassifier(**catboost_params)
+            # early_stopping is a fit-time kwarg in CatBoost, not a constructor arg
+            es = catboost_params.get("early_stopping", 50)
+            model.fit(X_train, y_train, eval_set=(X_val, y_val),
+                       early_stopping_rounds=es)
             t_fit = time.time() - t0
 
             # Evaluate on val + test
@@ -102,9 +139,67 @@ class ModelTrainer:
                 joblib.dump(feature_engineer, self.feat_path)
                 logging.info(f"Saved feature engineering state: {self.feat_path}")
 
+            # MLflow logging (if a tracker is provided)
+            if mlflow_tracker is not None:
+                self._log_to_mlflow(mlflow_tracker, catboost_params, metadata, model,
+                                     tier_summary, val_pr, val_roc, test_pr, test_roc, t_fit)
+
             return metadata
         except Exception as e:
             raise CustomException(e, sys)
+
+    def _log_to_mlflow(self, tracker, catboost_params, metadata, model, tier_summary,
+                        val_pr, val_roc, test_pr, test_roc, t_fit):
+        """Push params + metrics + artifacts to the active MLflow run."""
+        import mlflow
+        try:
+            # Params
+            mlflow.log_params({k: v for k, v in catboost_params.items()
+                                if isinstance(v, (str, int, float, bool))})
+            # Metrics
+            mlflow.log_metrics({
+                "val_pr_auc":   val_pr,
+                "val_roc_auc":  val_roc,
+                "test_pr_auc":  test_pr,
+                "test_roc_auc": test_roc,
+                "fit_time_seconds": t_fit,
+            })
+            for tier_name, info in tier_summary.items():
+                if info is None:
+                    continue
+                for k, v in info.items():
+                    if isinstance(v, (int, float)):
+                        mlflow.log_metric(f"{tier_name}_{k}", v)
+            # Artifacts — log native CatBoost model (so it can be registered)
+            try:
+                import mlflow.catboost
+                # MLflow 3.x: use `name` (artifact_path is deprecated)
+                try:
+                    mlflow.catboost.log_model(
+                        model,
+                        name="catboost",
+                        registered_model_name=None,
+                    )
+                except TypeError:
+                    # MLflow 2.x fallback
+                    mlflow.catboost.log_model(
+                        model,
+                        artifact_path="catboost",
+                    )
+            except Exception as e:
+                logging.warning(f"mlflow.catboost.log_model failed: {e}")
+                mlflow.log_artifact(self.model_path)  # fallback: raw .cbm file
+            # Supporting artifacts
+            mlflow.log_artifact(self.meta_path)
+            mlflow.log_artifact(self.feat_path)
+            # Tags
+            mlflow.set_tag("model",        "catboost")
+            mlflow.set_tag("dataset",      "sparkov")
+            mlflow.set_tag("dvc_stage",    "train")
+            mlflow.set_tag("tuned",        "true")
+            logging.info("MLflow: params + metrics + artifacts logged")
+        except Exception as e:
+            logging.warning(f"MLflow logging failed: {e}")
 
     def _three_tier_analysis(self, proba, y_true, n_thresh=1000):
         """Compute the 3-tier operating points and return a summary dict."""
