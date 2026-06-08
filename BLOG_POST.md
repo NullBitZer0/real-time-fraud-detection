@@ -1,6 +1,6 @@
 # Building a Production-Grade Real-Time Fraud Detection System with Sparkov, CatBoost, and a Full MLOps Stack
 
-*A 6-week journey from a single CSV to a streaming, monitored, versioned, CI/CD-ed fraud detection service — and what every engineer should know before they build their own.*
+*A journey from a single CSV to a streaming, monitored, versioned, CI/CD-ed fraud detection service — and what every engineer should know before they build their own.*
 
 ---
 
@@ -13,8 +13,8 @@ I wanted to see what "production-grade" actually looks like end-to-end, on my ow
 - Trains a CatBoost model with PR-AUC **0.91** (val) / **0.84** (test)
 - Scores a single transaction end-to-end in **< 50 ms** (P95)
 - Stores a versioned audit log of every decision to Postgres
-- Has a real-time dashboard with live fraud-rate charts, model registry, and drift reports
-- Re-trains and re-deploys on every push to `main` via GitHub Actions
+- Has a real-time dashboard with live fraud-rate charts, demo results, and drift reports
+- Retrains on a weekly schedule (Airflow) with drift-triggered fallback
 - Catches data drift, schema violations, and metric regressions before they hit production
 
 If you're a recruiter scanning this: I did this solo, end-to-end, in 6 weeks, and the architecture maps directly to how real MLOps teams ship models in fintech. If you're a fellow engineer: copy the patterns, and avoid the mistakes I list at the end.
@@ -103,7 +103,7 @@ A single `fraud_probability = 0.62` is useless to a fraud analyst. They want a d
 
 The thresholds aren't symmetric — T1 is a "block" decision that needs high precision, T2 is "review" that can tolerate more recall, T3 is just a tag. I picked them by sweeping the precision-recall curve and asking "where does the marginal cost of a false positive exceed the marginal cost of a false negative?" That's a business call, not a math call.
 
-I wrote this as a `PredictionPipeline` class that takes the raw Sparkov 14 features, runs feature engineering, scores, and returns `{proba, tier, action, threshold_used, transaction_id}`. The same class is used by the FastAPI server, the Kafka consumer, and the 100-test demo — so business logic is in exactly one place.
+I wrote this as a `PredictionPipeline` class that takes the raw Sparkov 14 features, runs feature engineering, scores, and returns `{proba, tier, action, threshold_used, transaction_id}`. The same class is used by the FastAPI server, the Kafka consumer, and the demo (Run 100 / Run 1000) — so business logic is in exactly one place.
 
 ---
 
@@ -198,23 +198,19 @@ The Kafka library situation on Python 3.12+ is rough. `kafka-python==2.0.2` is u
 
 ### 6. The unified React dashboard
 
-The most user-facing piece. 7 tabs, single React app at `http://localhost:3000`:
+The most user-facing piece. 3 tabs, single React app at `http://localhost:3000`:
 
 | Tab | What it shows |
 |---|---|
 | **📊 Live** | Real-time fraud-rate chart, live feed, metrics bar |
-| **🧪 Demo** | Run 100 tests, see confusion matrix + per-row results |
-| **📈 Monitoring** | Grafana dashboard (totals, fraud %, p50/p95/p99 latency) |
+| **🧪 Demo** | Run 100 or 1000 tests, see confusion matrix + tier summary |
 | **🌊 Drift** | Embedded Evidently report (train vs test) |
-| **❤️ Health** | `/health` + `/readyz` + parsed Prometheus counters |
-| **📜 Audit** | Last 200 decisions from Postgres, with backfilled ground truth |
-| **🔗 MLflow** | Production model summary + deep-link buttons to DAGsHub |
 
-The ▶ Run 100 Tests button in the header triggers `/demo/run-100-tests` and auto-switches to the Demo tab when it finishes. The Audit tab is the showstopper — it joins every decision against `raw_transactions.is_fraud` to show backfilled accuracy in real time.
+The **▶ Run 100** and **▶ Run 1000** buttons in the header trigger `/demo/run-100-tests` with different sample sizes and auto-switch to the Demo tab when finished. The 1000-test run returns summary-only (confusion matrix, F1, tier counts) — individual result rows are dropped to keep the payload small. Monitoring, auditing, and model-registry concerns moved to dedicated tools: **Grafana + Prometheus** for observability, **Postgres audit log** for decision history, and **MLflow on DAGsHub** for the model registry.
 
 ### 7. CI/CD — GitHub Actions
 
-Two workflows. CI runs on every push + PR: ruff lint, compile check, parity test, API test, frontend build. CD runs on every push to `main`: pull the dataset from DVC, retrain, log to MLflow, generate drift report, **metric gate** (refuse to promote if PR-AUC < 0.78), promote Staging → Production, upload artifacts.
+Two workflows. CI runs on every push + PR: ruff lint, compile check, parity test, API test, frontend build. CD runs on every push to `main`: `dvc pull` dataset, lint, test, and (optionally) trigger an Airflow retraining DAG stub. Actual model training and promotion run on a schedule via Airflow, not on every push — avoiding wasted compute and DAGsHub API rate limits.
 
 A third workflow, `rollback.yml`, is `workflow_dispatch`-triggered: it moves the previous Production model back, archives the current one, and writes a `rollback_log.json` for the audit trail.
 
@@ -367,7 +363,7 @@ pip install -r requirements.txt
 bash scripts/demo.sh
 ```
 
-Open `http://localhost:3000`, click **▶ Run 100 Tests**, and walk through the 7 tabs. The Demo tab shows the confusion matrix, the Audit tab shows the same decisions in Postgres, the MLflow tab deep-links to the production model on DAGsHub.
+Open `http://localhost:3000`, click **▶ Run 100** or **▶ Run 1000**, and walk through the 3 tabs (Live, Demo, Drift). The Demo tab shows the confusion matrix, F1, and tier breakdown. For deeper observability, open Grafana at `http://localhost:3001` (admin/admin) for real-time charts, and the Airflow UI at `http://localhost:8080` (admin/admin) to inspect retraining DAGs.
 
 If you find this useful, ⭐ the repo. If you find a bug, file an issue. If you want to talk shop, find me on LinkedIn.
 
