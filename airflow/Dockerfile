@@ -44,7 +44,7 @@ RUN pip install --no-cache-dir --upgrade pip \
         mlflow==3.11.1 \
         dagshub==0.7.0 \
         catboost \
-        feast[postgres,redis]==0.41.0 \
+        "feast[postgres,redis]" \
         psycopg2-binary \
         redis \
         dvc \
@@ -54,12 +54,7 @@ RUN pip install --no-cache-dir --upgrade pip \
         prometheus-client==0.24.1 \
         python-dotenv>=1.0.0 \
         hydra-core \
-        optuna \
-        lightgbm \
-        xgboost \
-        imbalanced-learn \
-        shap \
-        flaml
+        optuna
 
 # Copy the entire project into the image so DAGs and source are available.
 # In production you'd bind-mount the project instead; this is a self-contained

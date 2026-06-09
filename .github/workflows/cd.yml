@@ -41,6 +41,7 @@ jobs:
       # ── 2. Deploy Staging ─────────────────────────────────────────────────────
       - name: Start staging stack
         run: |
+          touch .env
           docker compose up -d postgres redis
           echo "Waiting for Postgres..."
           for i in $(seq 1 30); do
