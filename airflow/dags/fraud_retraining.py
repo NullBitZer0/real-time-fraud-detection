@@ -191,12 +191,13 @@ def retrain():
             raise RuntimeError(f"feast materialize failed:\n{result['stderr']}")
         return {"redis_materialized": True}
 
+    model_result = train_model()
     chain = (
         pull_data()
         >> seed_feast()
-        >> train_model()
-        >> metric_gate(train_model())
-        >> promote(train_model())
+        >> model_result
+        >> metric_gate(model_result)
+        >> promote(model_result)
         >> materialize_online()
     )
     return chain
