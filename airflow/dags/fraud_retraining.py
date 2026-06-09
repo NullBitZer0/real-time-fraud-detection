@@ -135,12 +135,19 @@ def retrain():
                   + (PROJECT_ROOT / "data/raw/fraudTrain.csv").stat().st_size}
 
     @task
+    def seed_feast() -> dict:
+        """Compute features, write to Postgres, apply Feast definitions."""
+        result = _run("python feast/seed.py --skip-materialize")
+        if result["returncode"] != 0:
+            raise RuntimeError(f"feast seed failed:\n{result['stderr']}")
+        return {"postgres_seeded": True}
+
+    @task
     def train_model() -> dict:
-        """Run pipelines.training_pipeline → logs to DAGsHub MLflow."""
+        """Run pipelines.training_pipeline (reads from Feast/Postgres) → MLflow."""
         result = _run("python -m pipelines.training_pipeline")
         if result["returncode"] != 0:
             raise RuntimeError(f"training failed:\n{result['stderr']}")
-        # Read the metric that was just emitted
         metrics_file = METRICS_DIR / "train_metrics.json"
         with open(metrics_file) as f:
             metrics = json.load(f)
@@ -172,18 +179,26 @@ def retrain():
         return {"promoted": True, "test_pr_auc": metrics["test_pr_auc"]}
 
     @task
-    def refresh_feast() -> dict:
-        """Re-apply Feast feature views and re-materialize online store."""
+    def materialize_online() -> dict:
+        """Materialize Postgres → Redis with the latest feature data."""
         result = _run(
-            "cd feast/feature_repo && feast apply && "
-            "feast materialize -v cc_num_features -v merchant_features "
-            "\"2019-01-01T00:00:00\" \"2021-01-01T00:00:00\""
+            "python -c \"from datetime import datetime; "
+            "from feast import FeatureStore; "
+            "s = FeatureStore(repo_path='feast/feature_repo'); "
+            "s.materialize(datetime(2019,1,1), datetime(2025,1,1))\""
         )
         if result["returncode"] != 0:
-            raise RuntimeError(f"feast refresh failed:\n{result['stderr']}")
-        return {"feast_refreshed": True}
+            raise RuntimeError(f"feast materialize failed:\n{result['stderr']}")
+        return {"redis_materialized": True}
 
-    chain = pull_data() >> train_model() >> metric_gate(train_model()) >> promote(train_model()) >> refresh_feast()
+    chain = (
+        pull_data()
+        >> seed_feast()
+        >> train_model()
+        >> metric_gate(train_model())
+        >> promote(train_model())
+        >> materialize_online()
+    )
     return chain
 
 
