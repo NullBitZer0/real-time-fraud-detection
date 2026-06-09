@@ -25,8 +25,8 @@ from src.components.feature_engineering import FeatureEngineering
 from src.components.mlflow_tracking import from_hydra as mlflow_from_hydra
 from src.components.model_evaluation import evaluate_model
 from src.components.model_training import ModelTrainer, build_catboost_params
-from src.utils.logger import logging
 from src.utils.exception import CustomException
+from src.utils.logger import logging
 
 FEAST_REPO_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "feast", "feature_repo"

@@ -21,14 +21,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow.decorators import dag, task, task_group
-from airflow.operators.python import get_current_context
 from airflow.models import Variable
-
+from airflow.operators.python import get_current_context
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 # The project root is mounted at /opt/airflow/project in the Docker image
@@ -253,7 +251,6 @@ def fraud_retraining_dag():
     drift = generate_drift_report()
     decision = decide_path(drift)
     skip_task = skip()
-    final = notify(drift, retrain_result=None)
 
     # After retrain runs, attach its result to the notify call
     @task

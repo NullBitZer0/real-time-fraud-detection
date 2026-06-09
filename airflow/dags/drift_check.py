@@ -19,9 +19,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow.decorators import dag, task
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.models import Variable
-
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", "/opt/airflow/project"))
 METRICS_DIR  = PROJECT_ROOT / "metrics"

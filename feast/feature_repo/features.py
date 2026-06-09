@@ -12,12 +12,12 @@ Usage:
 """
 from datetime import timedelta
 
-from feast import Entity, FeatureView, Field
 from feast.infra.offline_stores.contrib.postgres_offline_store.postgres_source import (
     PostgreSQLSource,
 )
-from feast.types import Float32, Int64, String
+from feast.types import Float32
 
+from feast import Entity, FeatureView, Field
 
 # ── Entities ──────────────────────────────────────────────────────────────────
 cc_num = Entity(

@@ -9,18 +9,15 @@ Called from training pipeline:
     from src.components.optuna_tuning import run_optuna
     best_params = run_optuna(X_train, y_train, X_val, y_val, mlflow_tracker=tracker)
 """
+import argparse
 import json
 import os
-import sys
 import time
-import argparse
 
-import numpy as np
 from catboost import CatBoostClassifier
 from sklearn.metrics import average_precision_score
 
 from src.utils.logger import logging
-from src.utils.exception import CustomException
 
 SEARCH_SPACE = {
     "iterations":          (300, 1500),

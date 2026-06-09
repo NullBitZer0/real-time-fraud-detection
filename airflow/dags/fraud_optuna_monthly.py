@@ -20,7 +20,6 @@ from pathlib import Path
 from airflow.decorators import dag, task
 from airflow.models import Variable
 
-
 PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", "/opt/airflow/project"))
 OPTUNA_ENABLED = os.environ.get("OPTUNA_ENABLED", "").lower() in ("1", "true", "") or \
                  Variable.get("optuna_enabled", default_var="true").lower() == "true"

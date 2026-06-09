@@ -14,12 +14,10 @@ Usage:
     python feast/seed.py --nrows 5000        # small test
     python feast/seed.py --skip-materialize  # table-only, no Redis
 """
+import argparse
 import os
 import sys
-import argparse
-from datetime import datetime
 
-import numpy as np
 import pandas as pd
 import psycopg2
 
@@ -151,11 +149,16 @@ def _write_table(conn, table: str, df: pd.DataFrame):
 
 def seed(nrows: int | None = None, skip_materialize: bool = False):
     sys.path.insert(0, FEAST_REPO)
-    from feast import FeatureStore
     from features import (
-        cc_num, merchant, trans_num,
-        cc_num_features, merchant_features, transaction_features,
+        cc_num,
+        cc_num_features,
+        merchant,
+        merchant_features,
+        trans_num,
+        transaction_features,
     )
+
+    from feast import FeatureStore
     from src.components.feature_engineering import FeatureEngineering
     from src.utils.logger import logging
 

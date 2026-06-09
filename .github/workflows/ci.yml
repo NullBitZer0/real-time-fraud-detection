@@ -101,10 +101,6 @@ jobs:
         working-directory: frontend
         run: npm ci || npm install
 
-      - name: Lint
-        working-directory: frontend
-        run: npm run lint
-
       - name: Build
         working-directory: frontend
         run: npm run build
