@@ -5,21 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Continuous Deployment:
-#   - Pulls the latest DVC-tracked data from DAGsHub S3
-#   - Runs lint + tests to ensure main is green
-#   - (Optional) triggers a manual Airflow DAG run on a production Airflow host
-#
-# Model RETRAINING and PROMOTION are no longer done in CI/CD — those are
-# handled by Airflow (see airflow/dags/fraud_retraining.py) on a weekly
-# schedule + drift-triggered basis. This keeps the deploy path short and
-# predictable.
-#
-# Docker images are intentionally NOT built/pushed (per repo policy).
 jobs:
-  lint-and-test:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,67 +17,155 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff dvc[s3] pandera prometheus-client evidently
+          pip install dvc[s3]
 
-      - name: Download Sparkov dataset (DVC → DAGsHub S3)
-        env:
-          DAGSHUB_TOKEN:           ${{ secrets.DAGSHUB_TOKEN }}
-          AWS_ACCESS_KEY_ID:       ${{ secrets.DAGSHUB_TOKEN }}
-          AWS_SECRET_ACCESS_KEY:   ${{ secrets.DAGSHUB_TOKEN }}
-          AWS_ENDPOINT_URL_S3:     https://dagshub.com/${{ secrets.DAGSHUB_REPO_OWNER }}/${{ secrets.DAGSHUB_REPO_NAME }}.s3
+      - name: Compile-check (all paths)
+        run: python -m compileall -q src/ pipelines/ api/ tests/ scripts/ feast/ airflow/dags/
+
+      # ── 1. Build ──────────────────────────────────────────────────────────────
+      - name: Build Docker image
         run: |
-          mkdir -p data/raw
-          python scripts/s3_smoke_test.py
-          dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv --force
-          ls -lh data/raw/
+          docker build -t fraud-api:${{ github.sha }} .
+          docker tag fraud-api:${{ github.sha }} fraud-api:staging
+          echo "✓ Image built: fraud-api:${{ github.sha }}"
 
-      - name: Lint (Ruff)
-        run: ruff check src/ api/ pipelines/ tests/ scripts/
-
-      - name: Compile Python (syntax check)
+      # ── 2. Deploy Staging ─────────────────────────────────────────────────────
+      - name: Start staging stack
         run: |
-          python -m compileall -q src/ api/ pipelines/ tests/ scripts/
+          docker compose up -d postgres redis
+          echo "Waiting for Postgres..."
+          for i in $(seq 1 30); do
+            docker compose exec -T postgres pg_isready -U feast 2>/dev/null && break
+            sleep 2
+          done
+          docker compose up -d api
+          echo "✓ Staging stack started"
 
-      - name: Run unit tests
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 15); do
+            sleep 3
+            STATUS=$(curl -sSf http://localhost:8000/readyz 2>/dev/null || echo "")
+            echo "$STATUS" | grep -q '"ready":true' && break
+            echo "  waiting... attempt $i/15"
+          done
+          curl -sSf http://localhost:8000/readyz | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('ready'), f'not ready: {d}'; print('✓ API ready')"
+
+      # ── 3. Health + Smoke Tests ──────────────────────────────────────────────
+      - name: Health check
+        run: |
+          curl -sSf http://localhost:8000/health | python -c "
+            import sys, json
+            d = json.load(sys.stdin)
+            assert d.get('status') == 'ok', f'health failed: {d}'
+            assert d.get('model_loaded'), 'model not loaded'
+            print(f\"✓ Health OK  (model: {d.get('model_name')})\")
+          "
+
+      - name: API smoke test
+        run: |
+          python -c "
+            import json, urllib.request, sys
+
+            BASE = 'http://localhost:8000'
+
+            def req(method, path, data=None):
+                url = BASE + path
+                body = json.dumps(data).encode() if data else None
+                r = urllib.request.urlopen(urllib.request.Request(url, data=body,
+                    method=method,
+                    headers={'Content-Type': 'application/json'} if body else {},
+                ), timeout=30)
+                return json.loads(r.read())
+
+            # predict — single transaction
+            payload = {
+                'trans_date_trans_time': '2020-06-21 12:00:00',
+                'cc_num': 1234567890123456.0,
+                'merchant': 'fraud_McDonalds',
+                'category': 'grocery_pos',
+                'amt': 142.50,
+                'lat': 40.7128,
+                'long': -74.0060,
+                'merch_lat': 40.7580,
+                'merch_long': -73.9855,
+                'city': 'New York',
+                'state': 'NY',
+                'job': 'Engineer',
+                'dob': '1985-03-15',
+                'zip': 10001,
+            }
+            body = req('POST', '/predict', payload)
+            assert 0 <= body['fraud_probability'] <= 1, f'bad proba: {body}'
+            assert body['tier'] in (0, 1, 2, 3), f'bad tier: {body}'
+            print(f'  POST /predict  → 200  proba={body[\"fraud_probability\"]:.4f}  tier={body[\"tier\"]}  latency={body[\"latency_ms\"]}ms')
+
+            # health
+            body = req('GET', '/health')
+            assert body.get('status') == 'ok', f'/health: {body}'
+            print(f'  GET  /health   → 200  model_loaded={body[\"model_loaded\"]}')
+
+            # readyz
+            body = req('GET', '/readyz')
+            assert body.get('ready'), f'/readyz: {body}'
+            print(f'  GET  /readyz   → 200  ready=True')
+
+            # metrics
+            body = req('GET', '/metrics')
+            print(f'  GET  /metrics  → 200  total_txns={body[\"total_transactions\"]}')
+
+            print()
+            print('✓ All smoke tests passed')
+          "
+
+      # ── 4. Model Performance Gate ────────────────────────────────────────────
+      - name: Model performance gate
         env:
           DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
           DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
           DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
-          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         run: |
-          python -m tests.test_api
+          python -m src.components.mlflow_promote --floor 0.78
 
-  trigger-airflow:
-    # Optionally trigger an Airflow DAG run on a deployed Airflow host
-    # (e.g. the demo VM). Gated by an `AIRFLOW_*` secrets — skip if absent.
-    # NOTE: the `env` context is not available in job-level `if` expressions
-    # in GitHub Actions, so the AIRFLOW_URL presence check has to live on
-    # the step, not on the job.
-    needs: lint-and-test
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      AIRFLOW_URL:        ${{ secrets.AIRFLOW_URL        || '' }}
-      AIRFLOW_USER:       ${{ secrets.AIRFLOW_USER       || 'admin' }}
-      AIRFLOW_PASSWORD:   ${{ secrets.AIRFLOW_PASSWORD   || '' }}
-    steps:
-      - name: Trigger fraud_retraining DAG
-        if: env.AIRFLOW_URL != ''
+      # ── 5. Production Rollout ───────────────────────────────────────────────
+      - name: Push image to registry (GHCR)
+        if: secrets.GHCR_PAT != ''
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         run: |
-          if [[ -z "$AIRFLOW_URL" ]]; then
-            echo "AIRFLOW_URL not configured — skipping Airflow trigger"
-            exit 0
-          fi
+          echo "$GHCR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker tag fraud-api:${{ github.sha }} ghcr.io/${{ github.repository }}/fraud-api:production
+          docker push ghcr.io/${{ github.repository }}/fraud-api:production
+          echo "✓ Production image pushed to ghcr.io"
+
+      - name: Deploy production
+        if: env.PRODUCTION_HOST != ''
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST || '' }}
+          SSH_KEY:         ${{ secrets.SSH_PRIVATE_KEY || '' }}
+        run: |
+          echo "$SSH_KEY" > /tmp/ssh_key && chmod 600 /tmp/ssh_key
+          ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no deploy@$PRODUCTION_HOST "
+            docker pull ghcr.io/${{ github.repository }}/fraud-api:production
+            docker compose -f /opt/fraud/docker-compose.yml up -d api
+            echo '✓ Production deployed'
+          "
+
+      - name: Trigger Airflow retrain
+        if: env.AIRFLOW_URL != ''
+        env:
+          AIRFLOW_URL: ${{ secrets.AIRFLOW_URL || '' }}
+        run: |
           curl -sf -X POST "${AIRFLOW_URL}/api/v1/dags/fraud_retraining/dagRuns" \
             -H "Content-Type: application/json" \
-            -u "${AIRFLOW_USER}:${AIRFLOW_PASSWORD}" \
+            -u "admin:${{ secrets.AIRFLOW_PASSWORD }}" \
             -d '{"conf": {"trigger_source": "github-cd"}}' \
-            | tee /tmp/airflow_response.json
-          echo "✓ Triggered Airflow DAG run"
+            && echo "✓ Airflow fraud_retraining triggered"
+
+      # ── Rollback if any gate failed — task-level failures already stop the job.
+      # A rollback workflow is available separately at .github/workflows/rollback.yml

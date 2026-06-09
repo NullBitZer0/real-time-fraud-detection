@@ -19,32 +19,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install mlflow dagshub==0.7.0
+      - name: Install deps
+        run: pip install mlflow dagshub==0.7.0
 
       - name: Rollback Production → Staging
         env:
           DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
           DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
           DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+          ROLLBACK_REASON:    ${{ github.event.inputs.reason }}
         run: |
           python - <<'PY'
-          import os, sys, mlflow, dagshub
+          import os, sys, json, mlflow, dagshub
           from mlflow.tracking import MlflowClient
 
           NAME = "FraudDetectionCatBoost"
-          dagshub.init(
-              repo_owner=os.environ["DAGSHUB_REPO_OWNER"],
-              repo_name =os.environ["DAGSHUB_REPO_NAME"],
-              mlflow=True,
-          )
+          REPO_OWNER = os.environ["DAGSHUB_REPO_OWNER"]
+          REPO_NAME  = os.environ["DAGSHUB_REPO_NAME"]
+
+          dagshub.init(repo_owner=REPO_OWNER, repo_name=REPO_NAME, mlflow=True)
           client = MlflowClient()
+
           versions = client.search_model_versions(f"name='{NAME}'")
-          # DAGsHub: only the legacy stage field is reliable
           prod  = [v for v in versions if v.current_stage == "Production"]
           staging = [v for v in versions if v.current_stage == "Staging"]
 
@@ -55,7 +52,7 @@ jobs:
               print("ERROR: no Staging version to roll back to")
               sys.exit(1)
 
-          prod_v   = max(prod,   key=lambda v: int(v.version))
+          prod_v    = max(prod, key=lambda v: int(v.version))
           staging_v = max(staging, key=lambda v: int(v.version))
           print(f"Rolling back: Production v{prod_v.version} → Staging v{staging_v.version}")
 
@@ -68,31 +65,42 @@ jobs:
               NAME, staging_v.version, "Production", archive_existing_versions=True,
           )
 
-          # Audit log
+          # Log result
           run = client.get_run(staging_v.run_id)
           metrics = run.data.metrics
-          print(f"Rollback complete — Production is now v{staging_v.version} (test_pr_auc={metrics.get('test_pr_auc'):.4f})")
+          result = {
+              "old_production_version": prod_v.version,
+              "new_production_version": staging_v.version,
+              "test_pr_auc": metrics.get("test_pr_auc"),
+          }
+          print(json.dumps(result, indent=2))
+
+          # Write audit log (NO commit — avoids CI/CD loop)
+          audit = {
+              "timestamp": os.popen("date -u +%Y-%m-%dT%H:%M:%SZ").read().strip(),
+              "actor": os.environ.get("GITHUB_ACTOR", "unknown"),
+              "reason": os.environ.get("ROLLBACK_REASON", "manual"),
+              "workflow_run": os.environ.get("GITHUB_RUN_ID"),
+              "result": result,
+          }
+          os.makedirs("metrics", exist_ok=True)
+          with open("metrics/rollback_log.json", "w") as f:
+              json.dump(audit, f, indent=2)
+          print("✓ Rollback audit written to metrics/rollback_log.json")
+          # Upload as a workflow artifact instead of committing
           PY
 
-      - name: Write rollback record to metrics
-        env:
-          REASON: ${{ github.event.inputs.reason }}
-        run: |
-          mkdir -p metrics
-          cat > metrics/rollback_log.json <<EOF
-          {
-            "timestamp":    "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "actor":        "${{ github.actor }}",
-            "reason":       "$REASON",
-            "workflow_run": "${{ github.run_id }}"
-          }
-          EOF
-          cat metrics/rollback_log.json
+      - name: Upload rollback log as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-log
+          path: metrics/rollback_log.json
+          retention-days: 90
 
-      - name: Commit rollback record
+      - name: Notify
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add metrics/rollback_log.json
-          git commit -m "rollback: ${{ github.event.inputs.reason }}" || echo "no changes to commit"
-          git push
+          echo "============================================"
+          echo " Rollback complete — details in artifact"
+          echo " Triggered by: ${{ github.actor }}"
+          echo " Reason:       ${{ github.event.inputs.reason }}"
+          echo "============================================"
