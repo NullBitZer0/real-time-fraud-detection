@@ -187,6 +187,12 @@ def seed(nrows: int | None = None, skip_materialize: bool = False):
         features_df["is_fraud"]  = features_df["is_fraud"].astype(float)
         logging.info(f"Computed {len(features_df.columns)} feature columns over {len(features_df)} rows")
 
+        # Save fitted FeatureEngineering for inference pipeline
+        os.makedirs("models", exist_ok=True)
+        import joblib
+        joblib.dump(fe, "models/feature_engineering.pkl")
+        logging.info("Saved fitted FeatureEngineering → models/feature_engineering.pkl")
+
         features_df["event_timestamp"] = features_df["trans_date_trans_time"]
         features_df["created"]         = features_df["trans_date_trans_time"]
 
