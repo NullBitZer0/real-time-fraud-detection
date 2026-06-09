@@ -257,9 +257,31 @@ def run_training_pipeline(cfg: DictConfig):
         X_test  = test_fe [features].values.astype("float32")
         y_test  = test_fe ["is_fraud"].values
 
-        # ── Step 3: Model Training + Evaluation ────────────────────────────────
-        logging.info("Step 3/4 — Model Training + Evaluation")
-        catboost_params = build_catboost_params(dict(cfg.model))
+        # ── Step 3: Optuna Tuning (optional) ─────────────────────────────────────
+        optuna_enabled = cfg.optuna.get("enabled", False) or os.environ.get("OPTUNA_ENABLED", "").lower() in ("1", "true")
+        if optuna_enabled:
+            logging.info(f"Step 3/4 — Optuna Tuning ({cfg.optuna.n_trials} trials)")
+            from src.components.optuna_tuning import run_optuna
+            optuna_best = run_optuna(
+                X_train, y_train, X_val, y_val,
+                n_trials=cfg.optuna.n_trials,
+                timeout_minutes=cfg.optuna.timeout_minutes,
+                mlflow_tracker=t,
+            )
+            catboost_params = build_catboost_params({**dict(cfg.model), **optuna_best})
+            logging.info(f"Optuna best params applied: {optuna_best}")
+        else:
+            optuna_path = "models/optuna_best.json"
+            if os.path.exists(optuna_path):
+                with open(optuna_path) as f:
+                    saved = json.load(f).get("best_params", {})
+                catboost_params = build_catboost_params({**dict(cfg.model), **saved})
+                logging.info(f"Loaded saved Optuna params from {optuna_path}")
+            else:
+                catboost_params = build_catboost_params(dict(cfg.model))
+
+        # ── Step 4: Model Training + Evaluation ────────────────────────────────
+        logging.info("Step 4/4 — Model Training + Evaluation")
         tracker = mlflow_from_hydra(cfg, run_name=cfg.mlflow.run_name)
         with tracker as t:
             trainer = ModelTrainer()
