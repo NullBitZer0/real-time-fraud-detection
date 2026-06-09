@@ -38,7 +38,52 @@ jobs:
           docker tag fraud-api:${{ github.sha }} fraud-api:staging
           echo "✓ Image built: fraud-api:${{ github.sha }}"
 
-      # ── 2. Deploy Staging ─────────────────────────────────────────────────────
+      # ── 2. Download Model Artifacts ────────────────────────────────────────────
+      - name: Download model artifacts from MLflow
+        env:
+          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
+          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
+          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          python -c "
+          import os, sys, json, mlflow, dagshub
+          from mlflow.tracking import MlflowClient
+
+          owner = os.environ['DAGSHUB_REPO_OWNER']
+          repo  = os.environ['DAGSHUB_REPO_NAME']
+          token = os.environ['DAGSHUB_TOKEN']
+          if not token:
+              print('DAGSHUB_TOKEN not set — skipping model download')
+              sys.exit(0)
+
+          dagshub.init(repo_owner=owner, repo_name=repo, mlflow=True)
+
+          NAME = 'FraudDetectionCatBoost'
+          client = MlflowClient()
+          versions = client.search_model_versions(f\"name='{NAME}'\")
+          prod = [v for v in versions if v.current_stage == 'Production']
+          staging = [v for v in versions if v.current_stage == 'Staging']
+
+          # Prefer Production, fall back to Staging
+          target = None
+          if prod:
+              target = max(prod, key=lambda v: int(v.version))
+              print(f'Using Production v{target.version}')
+          elif staging:
+              target = max(staging, key=lambda v: int(v.version))
+              print(f'Using Staging v{target.version}')
+          else:
+              print('No Production or Staging model found — API will fail to start')
+              sys.exit(1)
+
+          run_id = target.run_id
+          os.makedirs('models', exist_ok=True)
+          mlflow.artifacts.download_artifacts(run_id=run_id, dst_path='models/')
+          files = os.listdir('models/')
+          print(f'Downloaded artifacts: {files}')
+          "
+
+      # ── 3. Deploy Staging ─────────────────────────────────────────────────────
       - name: Start staging stack
         run: |
           touch .env
@@ -61,7 +106,7 @@ jobs:
           done
           curl -sSf http://localhost:8000/readyz | python -c "import sys,json; d=json.load(sys.stdin); assert d.get('ready'), f'not ready: {d}'; print('✓ API ready')"
 
-      # ── 3. Health + Smoke Tests ──────────────────────────────────────────────
+      # ── 4. Health + Smoke Tests ──────────────────────────────────────────────
       - name: Health check
         run: |
           curl -sSf http://localhost:8000/health | python -c "
@@ -128,7 +173,7 @@ jobs:
             print('✓ All smoke tests passed')
           "
 
-      # ── 4. Model Performance Gate ────────────────────────────────────────────
+      # ── 5. Model Performance Gate ────────────────────────────────────────────
       - name: Model performance gate
         env:
           DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
@@ -137,7 +182,7 @@ jobs:
         run: |
           python -m src.components.mlflow_promote --floor 0.78
 
-      # ── 5. Production Rollout ───────────────────────────────────────────────
+      # ── 6. Production Rollout ───────────────────────────────────────────────
       - name: Push image to registry (GHCR)
         if: env.GHCR_PAT != ''
         run: |
