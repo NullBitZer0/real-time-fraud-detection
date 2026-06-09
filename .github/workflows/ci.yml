@@ -27,10 +27,10 @@ jobs:
           pip install ruff httpx
 
       - name: Lint (ruff)
-        run: ruff check src/ api/ pipelines/ tests/
+        run: ruff check src/ api/ pipelines/ tests/ scripts/ feast/ airflow/dags/
 
       - name: Compile-check (syntax)
-        run: python -m compileall -q src/ api/ pipelines/ tests/
+        run: python -m compileall -q src/ api/ pipelines/ tests/ scripts/ feast/ airflow/dags/
 
       - name: DVC validate
         run: |
@@ -65,7 +65,6 @@ jobs:
           ls data/raw/ || echo "no data — integration tests will be skipped"
 
       - name: Run parity test
-        continue-on-error: true
         run: |
           if [ -f data/raw/fraudTest.csv ]; then
             python -m tests.test_parity --n 500
@@ -74,13 +73,15 @@ jobs:
           fi
 
       - name: Run API test
-        continue-on-error: true
         run: |
           if [ -f data/raw/fraudTest.csv ]; then
             python -m tests.test_api
           else
             echo "::warning::data/raw/fraudTest.csv not present — skipping API test"
           fi
+
+      - name: Docker build check
+        run: docker build -t fraud-api:ci-test .
 
   # ── 3. Frontend build (lint + build) ─────────────────────────────────────
   frontend:
@@ -102,7 +103,7 @@ jobs:
 
       - name: Lint
         working-directory: frontend
-        run: npm run lint || true
+        run: npm run lint
 
       - name: Build
         working-directory: frontend
