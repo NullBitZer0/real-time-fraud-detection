@@ -23,9 +23,8 @@ COPY api/        api/
 COPY configs/    configs/
 COPY models/     models/
 COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
-COPY params.yaml .
-COPY dvc.yaml    dvc.yaml
-COPY .env        .env
+# These are training-time artifacts, not needed at API runtime
+# .env is excluded — mount at runtime via docker-compose env_file
 
 # Expose API + Prometheus port
 EXPOSE 8000
