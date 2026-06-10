@@ -16,11 +16,10 @@ import os
 import sys
 from pathlib import Path
 
-import dagshub
 import mlflow
 
 # Load .env early — must happen BEFORE the logger is imported, because
-# some env vars (e.g. DAGSHUB_TOKEN) are read by dagshub.init() below
+# some env vars (e.g. DAGSHUB_TOKEN) are read below
 try:
     from dotenv import load_dotenv
     _env_path = Path(__file__).resolve().parents[2] / ".env"
@@ -46,10 +45,15 @@ def _init_dagshub() -> None:
         os.environ["DAGSHUB_REPO_OWNER"] = owner
     if "DAGSHUB_REPO_NAME" not in os.environ:
         os.environ["DAGSHUB_REPO_NAME"]  = repo
-    if not os.environ.get("DAGSHUB_TOKEN"):
+    token = os.environ.get("DAGSHUB_TOKEN")
+    if not token:
         raise RuntimeError("DAGSHUB_TOKEN env var is required for promotion")
-    dagshub.init(repo_owner=owner, repo_name=repo, mlflow=True)
-    mlflow.set_tracking_uri(f"https://dagshub.com/{owner}/{repo}.mlflow")
+    # Configure MLflow tracking URI + auth directly instead of using
+    # dagshub.init() which can trigger a fragile OAuth flow.
+    tracking_uri = f"https://dagshub.com/{owner}/{repo}.mlflow"
+    mlflow.set_tracking_uri(tracking_uri)
+    os.environ["MLFLOW_TRACKING_USERNAME"] = token
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = token
 
 
 def get_production_metric(client, name: str) -> float | None:

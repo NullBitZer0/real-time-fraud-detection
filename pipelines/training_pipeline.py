@@ -5,24 +5,23 @@ Two data paths:
      `get_historical_features()`, skips redundant FeatureEngineering
   2. csv — reads raw CSVs, runs FeatureEngineering from scratch
 
+Config is read from params.yaml in the project root.
+
 Usage:
     python -m pipelines.training_pipeline
-    python -m pipelines.training_pipeline data.source=csv
-    python -m pipelines.training_pipeline model.iterations=1000 model.depth=10
 """
 import json
 import os
 import sys
 
-import hydra
 import joblib
 import pandas as pd
 import psycopg2
-from omegaconf import DictConfig
+import yaml
 
 from src.components.data_ingestion import DataIngestion, read_sparkov_split
 from src.components.feature_engineering import FeatureEngineering
-from src.components.mlflow_tracking import from_hydra as mlflow_from_hydra
+from src.components.mlflow_tracking import MLflowTracker
 from src.components.model_evaluation import evaluate_model
 from src.components.model_training import ModelTrainer, build_catboost_params
 from src.utils.exception import CustomException
@@ -33,11 +32,11 @@ FEAST_REPO_PATH = os.path.abspath(os.path.join(
 ))
 
 PG_CONFIG = {
-    "host": os.environ.get("POSTGRES_HOST", "localhost"),
-    "port": int(os.environ.get("POSTGRES_PORT", 5432)),
-    "user": os.environ.get("POSTGRES_USER", "feast"),
+    "host":     os.environ.get("POSTGRES_HOST", "localhost"),
+    "port":     int(os.environ.get("POSTGRES_PORT", 5432)),
+    "user":     os.environ.get("POSTGRES_USER", "feast"),
     "password": os.environ.get("POSTGRES_PASSWORD", "feast"),
-    "dbname": os.environ.get("POSTGRES_DB", "feast"),
+    "dbname":   os.environ.get("POSTGRES_DB", "feast"),
 }
 
 # All 34 model features (matches FeatureEngineering.feature_list)
@@ -73,6 +72,14 @@ FEAST_FEATURE_REFS = (
 )
 
 
+def _load_params() -> dict:
+    """Load config from params.yaml in the project root."""
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    params_path = os.path.join(root, "params.yaml")
+    with open(params_path) as f:
+        return yaml.safe_load(f)
+
+
 def load_from_feast() -> tuple:
     """Read pre-computed features from Feast offline store (Postgres).
 
@@ -83,7 +90,7 @@ def load_from_feast() -> tuple:
     3. Splits by timestamp → train (fraudTrain pre-80th), val (post-80th),
        test (fraudTest)
 
-    Returns: (train_df, val_val, test_df)
+    Returns: (train_df, val_df, test_df)
              Each has all 34 features + is_fraud — no further FE needed.
     """
     from feast import FeatureStore
@@ -111,8 +118,6 @@ def load_from_feast() -> tuple:
     ).to_df()
     logging.info(f"Feast returned {len(df):,} rows with {len(df.columns)} columns")
 
-    # Feast feature columns come without prefix (e.g. "hour", not "transaction_features:hour")
-    # Keep event_timestamp for split, drop other Feast-internal columns
     internal_cols = [c for c in df.columns if c.startswith("__") or c in (
         "trans_num", "cc_num", "merchant", "created"
     )]
@@ -128,7 +133,6 @@ def load_from_feast() -> tuple:
     val_df   = train_full[train_full.event_timestamp >= cutoff].reset_index(drop=True)
     train_df = train_full[train_full.event_timestamp <  cutoff].reset_index(drop=True)
 
-    # Drop event_timestamp now that split is done
     for part in [train_df, val_df, test_df]:
         part.drop(columns=["event_timestamp"], inplace=True, errors="ignore")
 
@@ -140,17 +144,18 @@ def load_from_feast() -> tuple:
     return train_df, val_df, test_df
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")
-def run_training_pipeline(cfg: DictConfig):
+def run_training_pipeline():
+    cfg = _load_params()
+
     logging.info("=" * 60)
     logging.info("TRAINING PIPELINE STARTED")
-    logging.info(f"  Model     : {cfg.model.model_name}")
-    logging.info(f"  Threshold : {cfg.data.tier_thresholds.tier2_review_queue}")
+    logging.info(f"  Model     : {cfg['model']['model_name']}")
+    logging.info(f"  Threshold : {cfg['data']['tier_thresholds']['tier2_review_queue']}")
     logging.info("=" * 60)
 
     try:
         # ── Step 1: Data Ingestion ────────────────────────────────────────────
-        source = cfg.data.get("source", "feast")
+        source = cfg["data"].get("source", "feast")
         logging.info(f"Step 1/4 — Data Ingestion (source={source})")
 
         if source == "feast":
@@ -162,6 +167,7 @@ def run_training_pipeline(cfg: DictConfig):
                 logging.info(f"Loaded fitted FeatureEngineering from {fe_path}")
             features = FEATURE_COLS
         else:
+            # ── CSV path: run feature engineering from scratch ────────────────
             logging.info("Step 2/4 — Feature Engineering (from scratch)")
             ingestion = DataIngestion()
             train_path, val_path, test_path = ingestion.initiate_data_ingestion()
@@ -181,10 +187,9 @@ def run_training_pipeline(cfg: DictConfig):
             X_test  = test_fe [features].values.astype("float32")
             y_test  = test_fe ["is_fraud"].values
 
-            # ── Step 3: Model Training + Evaluation ────────────────────────────
             logging.info("Step 3/4 — Model Training + Evaluation")
-            catboost_params = build_catboost_params(dict(cfg.model))
-            tracker = mlflow_from_hydra(cfg, run_name=cfg.mlflow.run_name)
+            catboost_params = build_catboost_params(cfg["model"])
+            tracker = MLflowTracker(cfg["mlflow"], run_name=cfg["mlflow"]["run_name"])
             with tracker as t:
                 trainer = ModelTrainer()
                 metadata = trainer.initiate_model_training(
@@ -194,50 +199,18 @@ def run_training_pipeline(cfg: DictConfig):
                     mlflow_tracker=t,
                 )
                 model_uri = f"runs:/{t.run.info.run_id}/catboost"
-                t.register_model(model_uri, cfg.mlflow.registered_name, stage="Staging")
+                t.register_model(model_uri, cfg["mlflow"]["registered_name"], stage="Staging")
 
-            # Re-evaluate with 3-tier threshold
             from catboost import CatBoostClassifier
             loaded = CatBoostClassifier()
             loaded.load_model(metadata["model_path"])
             eval_metrics = evaluate_model(
                 loaded, X_test, y_test,
                 tier_thresholds=metadata["tier_thresholds"],
-                threshold=cfg.data.tier_thresholds.tier2_review_queue,
+                threshold=cfg["data"]["tier_thresholds"]["tier2_review_queue"],
             )
-
-            # ── Summary ────────────────────────────────────────────────────────────
-            logging.info("=" * 60)
-            logging.info("TRAINING PIPELINE COMPLETED")
-            logging.info("=" * 60)
-            logging.info(f"  val  PR-AUC : {metadata['val_pr_auc']:.4f}")
-            logging.info(f"  val  ROC-AUC: {metadata['val_roc_auc']:.4f}")
-            logging.info(f"  test PR-AUC : {metadata['test_pr_auc']:.4f}")
-            logging.info(f"  test ROC-AUC: {metadata['test_roc_auc']:.4f}")
-            logging.info(f"  F1 @ T2     : {eval_metrics['f1']:.4f}")
-            logging.info("")
-            logging.info("3-tier analysis (test set):")
-            for tier_name, info in metadata["tier_summary"].items():
-                if info is None:
-                    continue
-                logging.info(
-                    f"  {tier_name:<10} t={info['threshold']:.4f}  "
-                    f"P={info['precision']:.4f}  R={info['recall']:.4f}  F1={info['f1']:.4f}  "
-                    f"TP={info['tp']:>5}  FP={info['fp']:>5}  FN={info['fn']:>5}"
-                )
-
-            # DVC metrics
-            os.makedirs("metrics", exist_ok=True)
-            dvc_metrics = {
-                "val_pr_auc":   float(metadata["val_pr_auc"]),
-                "val_roc_auc":  float(metadata["val_roc_auc"]),
-                "test_pr_auc":  float(metadata["test_pr_auc"]),
-                "test_roc_auc": float(metadata["test_roc_auc"]),
-                "f1_at_t2":     float(eval_metrics["f1"]),
-            }
-            with open("metrics/train_metrics.json", "w") as f:
-                json.dump(dvc_metrics, f, indent=2)
-
+            _log_summary(metadata, eval_metrics)
+            _save_metrics(metadata, eval_metrics)
             return eval_metrics
 
         # ── Feast path: features already pre-computed ─────────────────────────
@@ -257,32 +230,34 @@ def run_training_pipeline(cfg: DictConfig):
         X_test  = test_fe [features].values.astype("float32")
         y_test  = test_fe ["is_fraud"].values
 
-        # ── Step 3: Optuna Tuning (optional) ─────────────────────────────────────
-        optuna_enabled = cfg.optuna.get("enabled", False) or os.environ.get("OPTUNA_ENABLED", "").lower() in ("1", "true")
+        # ── Step 3: Optuna Tuning (optional) ─────────────────────────────────
+        optuna_cfg = cfg.get("optuna", {})
+        optuna_enabled = optuna_cfg.get("enabled", False) or \
+            os.environ.get("OPTUNA_ENABLED", "").lower() in ("1", "true")
+
         if optuna_enabled:
-            logging.info(f"Step 3/4 — Optuna Tuning ({cfg.optuna.n_trials} trials)")
+            logging.info(f"Step 3/4 — Optuna Tuning ({optuna_cfg['n_trials']} trials)")
             from src.components.optuna_tuning import run_optuna
             optuna_best = run_optuna(
                 X_train, y_train, X_val, y_val,
-                n_trials=cfg.optuna.n_trials,
-                timeout_minutes=cfg.optuna.timeout_minutes,
-                mlflow_tracker=t,
+                n_trials=optuna_cfg["n_trials"],
+                timeout_minutes=optuna_cfg.get("timeout_minutes", 0),
             )
-            catboost_params = build_catboost_params({**dict(cfg.model), **optuna_best})
+            catboost_params = build_catboost_params({**cfg["model"], **optuna_best})
             logging.info(f"Optuna best params applied: {optuna_best}")
         else:
             optuna_path = "models/optuna_best.json"
             if os.path.exists(optuna_path):
                 with open(optuna_path) as f:
                     saved = json.load(f).get("best_params", {})
-                catboost_params = build_catboost_params({**dict(cfg.model), **saved})
+                catboost_params = build_catboost_params({**cfg["model"], **saved})
                 logging.info(f"Loaded saved Optuna params from {optuna_path}")
             else:
-                catboost_params = build_catboost_params(dict(cfg.model))
+                catboost_params = build_catboost_params(cfg["model"])
 
-        # ── Step 4: Model Training + Evaluation ────────────────────────────────
+        # ── Step 4: Model Training + Evaluation ──────────────────────────────
         logging.info("Step 4/4 — Model Training + Evaluation")
-        tracker = mlflow_from_hydra(cfg, run_name=cfg.mlflow.run_name)
+        tracker = MLflowTracker(cfg["mlflow"], run_name=cfg["mlflow"]["run_name"])
         with tracker as t:
             trainer = ModelTrainer()
             metadata = trainer.initiate_model_training(
@@ -292,55 +267,57 @@ def run_training_pipeline(cfg: DictConfig):
                 mlflow_tracker=t,
             )
             model_uri = f"runs:/{t.run.info.run_id}/catboost"
-            t.register_model(model_uri, cfg.mlflow.registered_name, stage="Staging")
+            t.register_model(model_uri, cfg["mlflow"]["registered_name"], stage="Staging")
 
-        # Re-evaluate with 3-tier threshold
         from catboost import CatBoostClassifier
         loaded = CatBoostClassifier()
         loaded.load_model(metadata["model_path"])
         eval_metrics = evaluate_model(
             loaded, X_test, y_test,
             tier_thresholds=metadata["tier_thresholds"],
-            threshold=cfg.data.tier_thresholds.tier2_review_queue,
+            threshold=cfg["data"]["tier_thresholds"]["tier2_review_queue"],
         )
-
-        # ── Summary ────────────────────────────────────────────────────────────
-        logging.info("=" * 60)
-        logging.info("TRAINING PIPELINE COMPLETED")
-        logging.info("=" * 60)
-        logging.info(f"  val  PR-AUC : {metadata['val_pr_auc']:.4f}")
-        logging.info(f"  val  ROC-AUC: {metadata['val_roc_auc']:.4f}")
-        logging.info(f"  test PR-AUC : {metadata['test_pr_auc']:.4f}")
-        logging.info(f"  test ROC-AUC: {metadata['test_roc_auc']:.4f}")
-        logging.info(f"  F1 @ T2     : {eval_metrics['f1']:.4f}")
-        logging.info("")
-        logging.info("3-tier analysis (test set):")
-        for tier_name, info in metadata["tier_summary"].items():
-            if info is None:
-                continue
-            logging.info(
-                f"  {tier_name:<10} t={info['threshold']:.4f}  "
-                f"P={info['precision']:.4f}  R={info['recall']:.4f}  F1={info['f1']:.4f}  "
-                f"TP={info['tp']:>5}  FP={info['fp']:>5}  FN={info['fn']:>5}"
-            )
-
-        # DVC metrics
-        os.makedirs("metrics", exist_ok=True)
-        dvc_metrics = {
-            "val_pr_auc":   float(metadata["val_pr_auc"]),
-            "val_roc_auc":  float(metadata["val_roc_auc"]),
-            "test_pr_auc":  float(metadata["test_pr_auc"]),
-            "test_roc_auc": float(metadata["test_roc_auc"]),
-            "f1_at_t2":     float(eval_metrics["f1"]),
-        }
-        with open("metrics/train_metrics.json", "w") as f:
-            json.dump(dvc_metrics, f, indent=2)
-
+        _log_summary(metadata, eval_metrics)
+        _save_metrics(metadata, eval_metrics)
         return eval_metrics
 
     except Exception as e:
         logging.exception("Training pipeline failed")
         raise CustomException(e, sys)
+
+
+def _log_summary(metadata: dict, eval_metrics: dict):
+    logging.info("=" * 60)
+    logging.info("TRAINING PIPELINE COMPLETED")
+    logging.info("=" * 60)
+    logging.info(f"  val  PR-AUC : {metadata['val_pr_auc']:.4f}")
+    logging.info(f"  val  ROC-AUC: {metadata['val_roc_auc']:.4f}")
+    logging.info(f"  test PR-AUC : {metadata['test_pr_auc']:.4f}")
+    logging.info(f"  test ROC-AUC: {metadata['test_roc_auc']:.4f}")
+    logging.info(f"  F1 @ T2     : {eval_metrics['f1']:.4f}")
+    logging.info("")
+    logging.info("3-tier analysis (test set):")
+    for tier_name, info in metadata["tier_summary"].items():
+        if info is None:
+            continue
+        logging.info(
+            f"  {tier_name:<10} t={info['threshold']:.4f}  "
+            f"P={info['precision']:.4f}  R={info['recall']:.4f}  F1={info['f1']:.4f}  "
+            f"TP={info['tp']:>5}  FP={info['fp']:>5}  FN={info['fn']:>5}"
+        )
+
+
+def _save_metrics(metadata: dict, eval_metrics: dict):
+    os.makedirs("metrics", exist_ok=True)
+    metrics = {
+        "val_pr_auc":   float(metadata["val_pr_auc"]),
+        "val_roc_auc":  float(metadata["val_roc_auc"]),
+        "test_pr_auc":  float(metadata["test_pr_auc"]),
+        "test_roc_auc": float(metadata["test_roc_auc"]),
+        "f1_at_t2":     float(eval_metrics["f1"]),
+    }
+    with open("metrics/train_metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
 
 
 if __name__ == "__main__":

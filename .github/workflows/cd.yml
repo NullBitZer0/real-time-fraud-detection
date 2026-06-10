@@ -46,7 +46,7 @@ jobs:
           DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
         run: |
           python -c "
-          import os, sys, json, mlflow, dagshub
+          import os, sys, mlflow
           from mlflow.tracking import MlflowClient
 
           owner = os.environ['DAGSHUB_REPO_OWNER']
@@ -56,7 +56,12 @@ jobs:
               print('DAGSHUB_TOKEN not set — skipping model download')
               sys.exit(0)
 
-          dagshub.init(repo_owner=owner, repo_name=repo, mlflow=True)
+          # Configure MLflow tracking URI + auth directly instead of using
+          # dagshub.init() which can trigger a fragile OAuth flow.
+          tracking_uri = f'https://dagshub.com/{owner}/{repo}.mlflow'
+          mlflow.set_tracking_uri(tracking_uri)
+          os.environ['MLFLOW_TRACKING_USERNAME'] = token
+          os.environ['MLFLOW_TRACKING_PASSWORD'] = token
 
           NAME = 'FraudDetectionCatBoost'
           client = MlflowClient()
