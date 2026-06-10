@@ -4,15 +4,9 @@ defaults:
   - model: catboost
 
 data:
-  # Training data source: "postgres" (fraud_detection.raw_transactions) or "csv"
-  source:             csv
-  # Input files (only used when source=csv)
-  train_path:          data/raw/fraudTrain.csv
-  test_path:           data/raw/fraudTest.csv
-  # Output artifacts
-  out_train:           artifacts/sparkov_train.csv
-  out_val:             artifacts/sparkov_val.csv
-  out_test:            artifacts/sparkov_test.csv
+  # Training data source: "feast" (Postgres via Feast) or "csv" (raw files)
+  # Raw CSVs are only needed to re-seed Feast: python feast/seed.py
+  source:             feast
   # Time-based split
   val_quantile:        0.80        # last 20% of fraudTrain -> val
   # Target
@@ -38,7 +32,7 @@ model:
   random_seed:         42
 
 optuna:
-  enabled:           false        # deferred — run `dvc repro optuna_tune` separately
+  enabled:           false        # deferred — run python -m src.components.optuna_tuning separately
   n_trials:          20
   timeout_minutes:   0            # 0 = no timeout (rely on n_trials)
 
