@@ -49,11 +49,12 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
-# ── Feast ─────────────────────────────────────────────────────────────────────
-feast_repo/data/
-feast_repo/registry/
-feast_repo/online_store/
+# ── Feast (runtime-generated, never commit) ──────────────────────────────────
+feast/feature_repo/data/
+feast/feature_repo/registry/
+feast/feature_repo/online_store/
 feature_store.db
+*.db
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 *.log

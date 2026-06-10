@@ -159,14 +159,3 @@ class _CatBoostPyfunc(mlflow.pyfunc.PythonModel):
         return self.model.predict_proba(model_input)[:, 1]
 
 
-# Convenience: build a tracker from a Hydra DictConfig
-def from_hydra(cfg, run_name: str = None) -> MLflowTracker:
-    """`cfg.mlflow` is the Hydra sub-config with tracking_uri/experiment_name/..."""
-    cfg_dict = {
-        "tracking_uri":    cfg.mlflow.tracking_uri,
-        "experiment_name": cfg.mlflow.experiment_name,
-        "run_name":        run_name or cfg.mlflow.run_name,
-        "register_model":  cfg.mlflow.register_model,
-        "registered_name": cfg.mlflow.registered_name,
-    }
-    return MLflowTracker(cfg_dict, run_name=cfg_dict["run_name"])

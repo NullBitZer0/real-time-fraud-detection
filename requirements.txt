@@ -10,7 +10,6 @@ lightgbm
 catboost 
 optuna 
 mlflow==3.11.1
-hydra-core
 dvc
 dagshub==0.7.0
 pandera==0.31.1
