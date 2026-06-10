@@ -10,6 +10,7 @@ offline_store:
   database: feast
   user: feast
   password: feast
+  sslmode: disable
 
 # ── Online store: Redis (used at inference via get_online_features) ────────
 online_store:
