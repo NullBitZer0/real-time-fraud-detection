@@ -115,11 +115,11 @@ jobs:
       - name: Health check
         run: |
           curl -sSf http://localhost:8000/health | python -c "
-            import sys, json
-            d = json.load(sys.stdin)
-            assert d.get('status') == 'ok', f'health failed: {d}'
-            assert d.get('model_loaded'), 'model not loaded'
-            print(f\"✓ Health OK  (model: {d.get('model_name')})\")
+          import sys, json
+          d = json.load(sys.stdin)
+          assert d.get('status') == 'ok', f'health failed: {d}'
+          assert d.get('model_loaded'), 'model not loaded'
+          print(f\"✓ Health OK  (model: {d.get('model_name')})\")
           "
 
       - name: API smoke test
