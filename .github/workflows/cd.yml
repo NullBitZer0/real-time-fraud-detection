@@ -5,14 +5,22 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/fraud-api
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GHCR_PAT: ${{ secrets.GHCR_PAT || '' }}
-      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST || '' }}
-      AIRFLOW_URL: ${{ secrets.AIRFLOW_URL || '' }}
+      DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER || '' }}
+      DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME || '' }}
+      DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -31,19 +39,9 @@ jobs:
       - name: Compile-check (all paths)
         run: python -m compileall -q src/ pipelines/ api/ tests/ scripts/ feast/ airflow/dags/
 
-      # ── 1. Build ──────────────────────────────────────────────────────────────
-      - name: Build Docker image
-        run: |
-          docker build -t fraud-api:${{ github.sha }} .
-          docker tag fraud-api:${{ github.sha }} fraud-api:staging
-          echo "✓ Image built: fraud-api:${{ github.sha }}"
-
-      # ── 2. Download Model Artifacts ────────────────────────────────────────────
+      # ── 1. Download Model Artifacts ────────────────────────────────────────────
       - name: Download model artifacts from MLflow
-        env:
-          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
-          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
-          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+        if: env.DAGSHUB_TOKEN != ''
         run: |
           python -c "
           import os, sys, mlflow
@@ -52,9 +50,6 @@ jobs:
           owner = os.environ['DAGSHUB_REPO_OWNER']
           repo  = os.environ['DAGSHUB_REPO_NAME']
           token = os.environ['DAGSHUB_TOKEN']
-          if not token:
-            print('DAGSHUB_TOKEN not set — skipping model download')
-            sys.exit(0)
 
           tracking_uri = f'https://dagshub.com/{owner}/{repo}.mlflow'
           mlflow.set_tracking_uri(tracking_uri)
@@ -75,15 +70,51 @@ jobs:
             target = max(staging, key=lambda v: int(v.version))
             print(f'Using Staging v{target.version}')
           else:
-            print('No Production or Staging model found — API will fail to start')
+            print('No Production or Staging model found')
             sys.exit(1)
 
           run_id = target.run_id
           os.makedirs('models', exist_ok=True)
           mlflow.artifacts.download_artifacts(run_id=run_id, dst_path='models/')
-          files = os.listdir('models/')
-          print(f'Downloaded artifacts: {files}')
+          print(f'Downloaded: {os.listdir(\"models/\")}')
           "
+
+      # ── 2. Build + Push to GHCR ───────────────────────────────────────────────
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=
+            type=ref,event=branch
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Print image info
+        run: |
+          echo "✓ Image pushed:"
+          echo "${{ steps.meta.outputs.tags }}" | while read tag; do
+            [ -n "$tag" ] && echo "  $tag"
+          done
 
       # ── 3. Deploy Staging ─────────────────────────────────────────────────────
       - name: Start staging stack
@@ -173,42 +204,13 @@ jobs:
 
       # ── 5. Model Performance Gate ────────────────────────────────────────────
       - name: Model performance gate
-        env:
-          DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER }}
-          DAGSHUB_REPO_NAME:  ${{ secrets.DAGSHUB_REPO_NAME }}
-          DAGSHUB_TOKEN:      ${{ secrets.DAGSHUB_TOKEN }}
+        if: env.DAGSHUB_TOKEN != ''
         run: |
           python -m src.components.mlflow_promote --floor 0.78
 
-      # ── 6. Production Rollout ───────────────────────────────────────────────
-      - name: Push image to registry (GHCR)
-        if: env.GHCR_PAT != ''
+      # ── 6. Cleanup ────────────────────────────────────────────────────────────
+      - name: Stop staging stack
+        if: always()
         run: |
-          echo "$GHCR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker tag fraud-api:${{ github.sha }} ghcr.io/${{ github.repository }}/fraud-api:production
-          docker push ghcr.io/${{ github.repository }}/fraud-api:production
-          echo "✓ Production image pushed to ghcr.io"
-
-      - name: Deploy production
-        if: env.PRODUCTION_HOST != ''
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY || '' }}
-        run: |
-          echo "$SSH_KEY" > /tmp/ssh_key && chmod 600 /tmp/ssh_key
-          ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no deploy@$PRODUCTION_HOST "
-            docker pull ghcr.io/${{ github.repository }}/fraud-api:production
-            docker compose -f /opt/fraud/docker-compose.yml up -d api
-            echo '✓ Production deployed'
-          "
-
-      - name: Trigger Airflow retrain
-        if: env.AIRFLOW_URL != ''
-        run: |
-          curl -sf -X POST "${AIRFLOW_URL}/api/v1/dags/fraud_retraining/dagRuns" \
-            -H "Content-Type: application/json" \
-            -u "admin:${{ secrets.AIRFLOW_PASSWORD }}" \
-            -d '{"conf": {"trigger_source": "github-cd"}}' \
-            && echo "✓ Airflow fraud_retraining triggered"
-
-      # ── Rollback if any gate failed — task-level failures already stop the job.
-      # A rollback workflow is available separately at .github/workflows/rollback.yml
+          docker compose down -v 2>/dev/null || true
+          echo "✓ Staging stack cleaned up"
