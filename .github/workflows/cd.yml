@@ -53,11 +53,9 @@ jobs:
           repo  = os.environ['DAGSHUB_REPO_NAME']
           token = os.environ['DAGSHUB_TOKEN']
           if not token:
-              print('DAGSHUB_TOKEN not set — skipping model download')
-              sys.exit(0)
+            print('DAGSHUB_TOKEN not set — skipping model download')
+            sys.exit(0)
 
-          # Configure MLflow tracking URI + auth directly instead of using
-          # dagshub.init() which can trigger a fragile OAuth flow.
           tracking_uri = f'https://dagshub.com/{owner}/{repo}.mlflow'
           mlflow.set_tracking_uri(tracking_uri)
           os.environ['MLFLOW_TRACKING_USERNAME'] = token
@@ -69,17 +67,16 @@ jobs:
           prod = [v for v in versions if v.current_stage == 'Production']
           staging = [v for v in versions if v.current_stage == 'Staging']
 
-          # Prefer Production, fall back to Staging
           target = None
           if prod:
-              target = max(prod, key=lambda v: int(v.version))
-              print(f'Using Production v{target.version}')
+            target = max(prod, key=lambda v: int(v.version))
+            print(f'Using Production v{target.version}')
           elif staging:
-              target = max(staging, key=lambda v: int(v.version))
-              print(f'Using Staging v{target.version}')
+            target = max(staging, key=lambda v: int(v.version))
+            print(f'Using Staging v{target.version}')
           else:
-              print('No Production or Staging model found — API will fail to start')
-              sys.exit(1)
+            print('No Production or Staging model found — API will fail to start')
+            sys.exit(1)
 
           run_id = target.run_id
           os.makedirs('models', exist_ok=True)
@@ -125,57 +122,53 @@ jobs:
       - name: API smoke test
         run: |
           python -c "
-            import json, urllib.request, sys
+          import json, urllib.request, sys
 
-            BASE = 'http://localhost:8000'
+          BASE = 'http://localhost:8000'
 
-            def req(method, path, data=None):
-                url = BASE + path
-                body = json.dumps(data).encode() if data else None
-                r = urllib.request.urlopen(urllib.request.Request(url, data=body,
-                    method=method,
-                    headers={'Content-Type': 'application/json'} if body else {},
-                ), timeout=30)
-                return json.loads(r.read())
+          def req(method, path, data=None):
+            url = BASE + path
+            body = json.dumps(data).encode() if data else None
+            r = urllib.request.urlopen(urllib.request.Request(url, data=body,
+              method=method,
+              headers={'Content-Type': 'application/json'} if body else {},
+            ), timeout=30)
+            return json.loads(r.read())
 
-            # predict — single transaction
-            payload = {
-                'trans_date_trans_time': '2020-06-21 12:00:00',
-                'cc_num': 1234567890123456.0,
-                'merchant': 'fraud_McDonalds',
-                'category': 'grocery_pos',
-                'amt': 142.50,
-                'lat': 40.7128,
-                'long': -74.0060,
-                'merch_lat': 40.7580,
-                'merch_long': -73.9855,
-                'city': 'New York',
-                'state': 'NY',
-                'job': 'Engineer',
-                'dob': '1985-03-15',
-                'zip': 10001,
-            }
-            body = req('POST', '/predict', payload)
-            assert 0 <= body['fraud_probability'] <= 1, f'bad proba: {body}'
-            assert body['tier'] in (0, 1, 2, 3), f'bad tier: {body}'
-            print(f'  POST /predict  → 200  proba={body[\"fraud_probability\"]:.4f}  tier={body[\"tier\"]}  latency={body[\"latency_ms\"]}ms')
+          payload = {
+            'trans_date_trans_time': '2020-06-21 12:00:00',
+            'cc_num': 1234567890123456.0,
+            'merchant': 'fraud_McDonalds',
+            'category': 'grocery_pos',
+            'amt': 142.50,
+            'lat': 40.7128,
+            'long': -74.0060,
+            'merch_lat': 40.7580,
+            'merch_long': -73.9855,
+            'city': 'New York',
+            'state': 'NY',
+            'job': 'Engineer',
+            'dob': '1985-03-15',
+            'zip': 10001,
+          }
+          body = req('POST', '/predict', payload)
+          assert 0 <= body['fraud_probability'] <= 1, f'bad proba: {body}'
+          assert body['tier'] in (0, 1, 2, 3), f'bad tier: {body}'
+          print(f'  POST /predict  -> 200  proba={body[\"fraud_probability\"]:.4f}  tier={body[\"tier\"]}  latency={body[\"latency_ms\"]}ms')
 
-            # health
-            body = req('GET', '/health')
-            assert body.get('status') == 'ok', f'/health: {body}'
-            print(f'  GET  /health   → 200  model_loaded={body[\"model_loaded\"]}')
+          body = req('GET', '/health')
+          assert body.get('status') == 'ok', f'/health: {body}'
+          print(f'  GET  /health   -> 200  model_loaded={body[\"model_loaded\"]}')
 
-            # readyz
-            body = req('GET', '/readyz')
-            assert body.get('ready'), f'/readyz: {body}'
-            print(f'  GET  /readyz   → 200  ready=True')
+          body = req('GET', '/readyz')
+          assert body.get('ready'), f'/readyz: {body}'
+          print(f'  GET  /readyz   -> 200  ready=True')
 
-            # metrics
-            body = req('GET', '/metrics')
-            print(f'  GET  /metrics  → 200  total_txns={body[\"total_transactions\"]}')
+          body = req('GET', '/metrics')
+          print(f'  GET  /metrics  -> 200  total_txns={body[\"total_transactions\"]}')
 
-            print()
-            print('✓ All smoke tests passed')
+          print()
+          print('All smoke tests passed')
           "
 
       # ── 5. Model Performance Gate ────────────────────────────────────────────
