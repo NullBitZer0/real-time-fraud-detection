@@ -73,7 +73,7 @@ class ModelTrainer:
             X_test, y_test   : test features and labels
             feature_engineer : fitted FeatureEngineering instance
             catboost_params  : kwargs for CatBoostClassifier
-                               (default: tuned from configs/model/catboost.yaml)
+                               (default: tuned from params.yaml)
             mlflow_tracker   : optional MLflowTracker (logs params/metrics/artifacts)
 
         Returns:
