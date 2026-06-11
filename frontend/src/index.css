@@ -2,17 +2,17 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:         #0a0d14;
-  --surface:    #111827;
-  --surface2:   #1a2235;
-  --border:     #1f2d45;
-  --accent:     #3b82f6;
-  --accent-glow:#3b82f620;
-  --success:    #10b981;
-  --danger:     #ef4444;
-  --warning:    #f59e0b;
-  --critical:   #dc2626;
-  --text:       #f1f5f9;
+  --bg:         #f8fafc;
+  --surface:    #ffffff;
+  --surface2:   #f1f5f9;
+  --border:     #e2e8f0;
+  --accent:     #2563eb;
+  --accent-glow:#2563eb20;
+  --success:    #16a34a;
+  --danger:     #dc2626;
+  --warning:    #d97706;
+  --critical:   #b91c1c;
+  --text:       #1e293b;
   --muted:      #64748b;
   --font:       'Inter', sans-serif;
 }
@@ -72,9 +72,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  transition: border-color 0.2s;
 }
-.metric-card:hover { border-color: var(--accent); }
 .metric-label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
 .metric-value { font-size: 28px; font-weight: 700; }
 .metric-value.danger  { color: var(--danger); }
@@ -274,7 +272,7 @@ body {
 .tab.active {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 0 12px var(--accent-glow);
+
 }
 .tab-content { min-height: 60vh; }
 

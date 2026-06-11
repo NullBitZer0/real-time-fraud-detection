@@ -20,6 +20,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY src/        src/
 COPY pipelines/  pipelines/
 COPY api/        api/
+COPY params.yaml params.yaml
 COPY models/     models/
 COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
 # These are training-time artifacts, not needed at API runtime
