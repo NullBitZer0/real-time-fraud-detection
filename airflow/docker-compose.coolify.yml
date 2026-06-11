@@ -95,8 +95,8 @@ services:
       airflow-postgres:
         condition: service_healthy
     command: webserver
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob"]
