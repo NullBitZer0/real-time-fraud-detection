@@ -2,7 +2,9 @@
 name: CD
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -17,6 +19,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 20
     env:
       DAGSHUB_REPO_OWNER: ${{ secrets.DAGSHUB_REPO_OWNER || '' }}
