@@ -110,9 +110,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Image pushed
-        run: echo "Image pushed: ${{ steps.meta.outputs.tags }}"
-
       # ── 3. Health check (after Coolify redeploys) ────────────────────────
       - name: Wait for Coolify redeploy
         run: sleep 30
