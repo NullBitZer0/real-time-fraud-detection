@@ -64,7 +64,7 @@ services:
           memory: 1536M
 
   api:
-    image: ghcr.io/${GITHUB_REPO:-NullBitZer0/real-time-fraud-detection}/fraud-api:${API_VERSION:-latest}
+    image: ghcr.io/nullbitzer0/real-time-fraud-detection/fraud-api:${API_VERSION:-latest}
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis

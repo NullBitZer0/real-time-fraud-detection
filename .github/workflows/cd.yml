@@ -14,7 +14,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/fraud-api
+  IMAGE_NAME: nullbitzer0/real-time-fraud-detection/fraud-api
 
 jobs:
   deploy:
