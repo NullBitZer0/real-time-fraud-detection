@@ -21,7 +21,7 @@ services:
 
   airflow-init:
     build:
-      context: .
+      context: ..
       dockerfile: airflow/Dockerfile
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -41,7 +41,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${DAGSHUB_TOKEN:-}
       AWS_ENDPOINT_URL_S3: https://dagshub.com/api/v1/repos/${DAGSHUB_REPO_OWNER:-}/${DAGSHUB_REPO_NAME:-}/storage/raw/s3
     volumes:
-      - .:/opt/airflow/project
+      - ..:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
     depends_on:
@@ -69,7 +69,7 @@ services:
 
   airflow-webserver:
     build:
-      context: .
+      context: ..
       dockerfile: airflow/Dockerfile
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -89,7 +89,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${DAGSHUB_TOKEN:-}
       AWS_ENDPOINT_URL_S3: https://dagshub.com/api/v1/repos/${DAGSHUB_REPO_OWNER:-}/${DAGSHUB_REPO_NAME:-}/storage/raw/s3
     volumes:
-      - .:/opt/airflow/project
+      - ..:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
     depends_on:
@@ -112,7 +112,7 @@ services:
 
   airflow-scheduler:
     build:
-      context: .
+      context: ..
       dockerfile: airflow/Dockerfile
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -132,7 +132,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${DAGSHUB_TOKEN:-}
       AWS_ENDPOINT_URL_S3: https://dagshub.com/api/v1/repos/${DAGSHUB_REPO_OWNER:-}/${DAGSHUB_REPO_NAME:-}/storage/raw/s3
     volumes:
-      - .:/opt/airflow/project
+      - ..:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
     depends_on:
