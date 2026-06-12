@@ -17,7 +17,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
   redis:
     image: redis:7
@@ -30,7 +30,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   kafka:
     image: apache/kafka:latest
@@ -61,7 +61,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1536M
+          memory: 768M
 
   api:
     image: ghcr.io/nullbitzer0/real-time-fraud-detection/fraud-api:${API_VERSION:-latest}
@@ -90,7 +90,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 384M
 
   airflow-postgres:
     image: postgres:16-alpine
@@ -109,7 +109,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   airflow-init:
     build:
@@ -157,7 +157,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
   airflow-webserver:
     build:
@@ -198,7 +198,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 384M
 
   airflow-scheduler:
     build:
@@ -239,7 +239,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 384M
 
   prometheus:
     image: prom/prometheus:latest
@@ -251,7 +251,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
   grafana:
     image: grafana/grafana:latest
@@ -265,7 +265,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 128M
 
 volumes:
   pgdata:
