@@ -108,7 +108,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 2G
 
   airflow-scheduler:
     build:
@@ -149,7 +149,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 2G
 
 volumes:
   airflow_postgres:
