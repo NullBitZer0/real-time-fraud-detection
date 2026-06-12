@@ -78,8 +78,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-feast}
       REDIS_PORT: "6379"
       KAFKA_BROKER: kafka:9092
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
