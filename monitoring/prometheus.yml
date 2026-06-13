@@ -9,3 +9,10 @@ scrape_configs:
         labels:
           service: fraud-detection-api
           env: local
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: system
+          env: local
