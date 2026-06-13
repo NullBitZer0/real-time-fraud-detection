@@ -120,9 +120,11 @@ services:
     image: prom/prometheus:latest
     volumes:
       - prometheus_data:/prometheus
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
     restart: unless-stopped
     deploy:
       resources:
@@ -137,10 +139,6 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
-      - ./monitoring/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
-      - ./monitoring/grafana_dashboard.json:/var/lib/grafana/dashboards/fraud-detection.json:ro
-      - ./monitoring/system-metrics.json:/var/lib/grafana/dashboards/system-metrics.json:ro
     depends_on:
       - prometheus
       - node-exporter
