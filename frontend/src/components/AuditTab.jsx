@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL ?? ''
 
 const TIER_NAME = { 0: 'approve', 1: 'auto_block', 2: 'review_queue', 3: 'soft_signal' }
 const TIER_COLOR = { 0: 'success', 1: 'critical', 2: 'warning', 3: '#eab308' }
