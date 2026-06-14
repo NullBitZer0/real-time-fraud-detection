@@ -16,3 +16,10 @@ scrape_configs:
         labels:
           service: system
           env: local
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: containers
+          env: local
