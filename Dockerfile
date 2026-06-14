@@ -38,9 +38,9 @@ COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
 # React frontend (built in first stage)
 COPY --from=frontend-build /app/dist /app/static/dashboard
 
-EXPOSE 8080
+EXPOSE 8888
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -fsS http://localhost:8080/readyz | grep -q '"ready":true' || exit 1
+    CMD curl -fsS http://localhost:8888/readyz | grep -q '"ready":true' || exit 1
 
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8888", "--workers", "1"]
