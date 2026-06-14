@@ -1,0 +1,15 @@
+# docker-compose.override.yml — local dev only
+# Adds host port mappings so demo.sh / uvicorn on host can reach infra.
+# Coolify ignores this file (only reads docker-compose.yml).
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  kafka:
+    ports:
+      - "9094:9094"
