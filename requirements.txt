@@ -9,11 +9,11 @@ xgboost
 lightgbm 
 catboost 
 optuna 
-mlflow==3.11.1
+mlflow==3.13.0
 dvc
 dagshub==0.7.0
 pandera==0.31.1
-prometheus-client==0.24.1
+prometheus-client==0.25.0
 python-dotenv>=1.0.0
 fastapi
 uvicorn
