@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sklearn.metrics import confusion_matrix, f1_score
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 from api.schema import (
     AuditRow,
@@ -508,7 +508,6 @@ async def audit_recent(n: int = 100):
 
 
 # ── Catch-all: serve React index.html for client-side routing ─────────────────
-from starlette.responses import FileResponse
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def serve_dashboard(full_path: str):
