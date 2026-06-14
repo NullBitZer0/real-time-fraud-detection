@@ -3,7 +3,7 @@
 #
 # What it starts:
 #   1. Docker infra:  postgres, redis, kafka, prometheus, grafana
-#   2. FastAPI:       uvicorn api.app:app on :8000
+#   2. FastAPI:       uvicorn api.app:app on :8080
 #   3. React:         vite dev server on :3000
 #
 # Stop with:   pkill -f 'uvicorn|vite'
@@ -44,12 +44,12 @@ else
 fi
 
 # ── 3. Start FastAPI in background ────────────────────────────────────────────
-echo "▶ Starting FastAPI (uvicorn on :8000)…"
+echo "▶ Starting FastAPI (uvicorn on :8080)…"
 # Kill stale API processes first
 pkill -f 'uvicorn api.app' 2>/dev/null || true
 sleep 1
 mkdir -p /tmp
-setsid python -m uvicorn api.app:app --host 0.0.0.0 --port 8000 --log-level info \
+setsid python -m uvicorn api.app:app --host 0.0.0.0 --port 8080 --log-level info \
   > /tmp/api.log 2>&1 < /dev/null &
 API_PID=$!
 disown
@@ -69,7 +69,7 @@ cd "$ROOT"
 echo ""
 echo "⏳ Waiting for API to come up (max 30s)…"
 for i in {1..30}; do
-  if curl -fsS http://localhost:8000/health > /dev/null 2>&1; then
+  if curl -fsS http://localhost:8080/health > /dev/null 2>&1; then
     echo "  ✓ API up after ${i}s"
     break
   fi
@@ -92,16 +92,16 @@ cat <<'EOF'
 ║                ✅  DEMO IS READY                             ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  🌐  React dashboard (3 tabs)   http://localhost:3000        ║
-║  📡  FastAPI + Swagger          http://localhost:8000/docs   ║
-║  ❤️  Health / readiness probe    http://localhost:8000/readyz ║
-║  📈  Prometheus metrics         http://localhost:8000/metrics║
+║  📡  FastAPI + Swagger          http://localhost:8080/docs   ║
+║  ❤️  Health / readiness probe    http://localhost:8080/readyz ║
+║  📈  Prometheus metrics         http://localhost:8080/metrics║
 ║  📊  Grafana monitoring         http://localhost:3001        ║
 ║                                (admin / admin)               ║
 ║  🔥  Prometheus raw             http://localhost:9090        ║
 ║  🗄️   pgAdmin (Postgres)        http://localhost:5050        ║
 ║                                (admin@admin.com / admin)     ║
 ║  📦  RedisInsight (Redis)       http://localhost:5540        ║
-║  ✈️   Airflow UI                 http://localhost:8080        ║
+║  ✈️   Airflow UI                 http://localhost:8081        ║
 ║                                (admin / admin)               ║
 ╚══════════════════════════════════════════════════════════════╝
 
