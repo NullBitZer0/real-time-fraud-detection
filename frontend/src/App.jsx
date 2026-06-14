@@ -5,8 +5,8 @@ import FraudChart  from './components/FraudChart'
 import DemoResults from './components/DemoResults'
 import DriftTab    from './components/DriftTab'
 
-const API  = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const WS   = import.meta.env.VITE_WS_URL  || 'ws://localhost:8000/ws'
+const API  = import.meta.env.VITE_API_URL ?? ''
+const WS   = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
 const MAX_EVENTS    = 50
 const MAX_CHART_PTS = 60
 

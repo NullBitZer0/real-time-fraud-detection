@@ -127,6 +127,15 @@ if _static_dir.exists():
 else:
     logging.warning(f"static dir '{_static_dir}' not found — drift_report.html will be unavailable")
 
+# Serve React dashboard
+_dashboard_dir = pathlib.Path("static/dashboard")
+if _dashboard_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(_dashboard_dir / "assets")), name="dashboard-assets")
+    _dashboard_index = _dashboard_dir / "index.html"
+else:
+    logging.warning(f"dashboard dir '{_dashboard_dir}' not found — React dashboard will be unavailable")
+    _dashboard_index = None
+
 
 # ── /health ───────────────────────────────────────────────────────────────────
 @app.get("/health", response_model=HealthResponse, tags=["System"])
@@ -496,3 +505,14 @@ async def audit_recent(n: int = 100):
         )
         for r in rows
     ]
+
+
+# ── Catch-all: serve React index.html for client-side routing ─────────────────
+from starlette.responses import FileResponse
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_dashboard(full_path: str):
+    """Serve React SPA — any non-API route returns index.html."""
+    if _dashboard_index and _dashboard_index.exists():
+        return FileResponse(str(_dashboard_index))
+    raise HTTPException(status_code=404, detail="Dashboard not found")

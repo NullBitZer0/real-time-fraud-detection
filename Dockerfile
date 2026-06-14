@@ -1,3 +1,14 @@
+FROM node:20-alpine AS frontend-build
+WORKDIR /app
+ARG VITE_API_URL=""
+ARG VITE_WS_URL=""
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -23,14 +34,13 @@ COPY api/        api/
 COPY params.yaml params.yaml
 COPY models/     models/
 COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
-# These are training-time artifacts, not needed at API runtime
-# .env is excluded — mount at runtime via docker-compose env_file
 
-# Expose API + Prometheus port
+# React frontend (built in first stage)
+COPY --from=frontend-build /app/dist /app/static/dashboard
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -fsS http://localhost:8000/readyz | grep -q '"ready":true' || exit 1
 
-# Default: production-style JSON logs, 1 uvicorn worker (swap to gunicorn for prod)
 CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
