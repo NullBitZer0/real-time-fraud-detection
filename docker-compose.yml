@@ -3,8 +3,6 @@ services:
   #Core infra
   postgres:
     image: postgres:15
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-feast}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-feast}
@@ -24,8 +22,6 @@ services:
 
   redis:
     image: redis:7
-    ports:
-      - "6379:6379"
     healthcheck:
       test: redis-cli ping
       interval: 10s
@@ -39,8 +35,6 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
-    ports:
-      - "9094:9094"
     environment:
       KAFKA_NODE_ID: "0"
       KAFKA_PROCESS_ROLES: "controller,broker"
