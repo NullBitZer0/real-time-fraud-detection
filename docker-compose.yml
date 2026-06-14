@@ -229,6 +229,13 @@ services:
           --role Admin \
           --email admin@example.com \
           --password admin || true
+        airflow users create \
+          --username viewer \
+          --firstname Portfolio \
+          --lastname Viewer \
+          --role Viewer \
+          --email viewer@example.com \
+          --password viewer || true
         echo "Airflow initialised"
     restart: "no"
     deploy:
