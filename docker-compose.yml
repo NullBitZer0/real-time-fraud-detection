@@ -123,6 +123,7 @@ services:
     build:
       context: .
       dockerfile: airflow/Dockerfile
+    user: root
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
@@ -173,6 +174,9 @@ services:
           echo "Pulling Sparkov data from DVC..."
           cd /opt/airflow/project
           git init 2>/dev/null || true
+          # Fix DVC permissions for airflow user
+          mkdir -p .dvc/tmp logs
+          chmod -R 777 .dvc logs
           dvc remote modify origin endpointurl "https://dagshub.com/${DAGSHUB_REPO_OWNER:-NullBitZer0}/${DAGSHUB_REPO_NAME:-real-time-fraud-detection}.s3" 2>/dev/null || true
           dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv || echo "DVC pull failed — drift report will be unavailable"
         fi
