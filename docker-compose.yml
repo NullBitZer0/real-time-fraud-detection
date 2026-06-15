@@ -167,6 +167,15 @@ services:
           --role Viewer \
           --email viewer@example.com \
           --password viewer || true
+
+        # Pull Sparkov data from DVC
+        if [ ! -f "/opt/airflow/project/data/raw/fraudTest.csv" ]; then
+          echo "Pulling Sparkov data from DVC..."
+          cd /opt/airflow/project
+          git init 2>/dev/null || true
+          dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv || echo "DVC pull failed"
+        fi
+
         echo "Airflow initialised"
     restart: "no"
     deploy:
