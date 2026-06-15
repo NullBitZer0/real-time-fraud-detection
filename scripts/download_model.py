@@ -56,5 +56,34 @@ def download_production_model(model_dir: str = "models") -> None:
     print(f"Model download complete: {target}")
 
 
+def download_test_data() -> None:
+    """Download fraudTest.csv from DVC remote via DagsHub S3 API."""
+    import requests
+
+    target = Path("data/raw/fraudTest.csv")
+    if target.exists():
+        print(f"Test data already exists at {target}, skipping")
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    token = os.environ.get("DAGSHUB_TOKEN", "")
+    owner = os.environ.get("DAGSHUB_REPO_OWNER", "NullBitZer0")
+    repo  = os.environ.get("DAGSHUB_REPO_NAME",  "real-time-fraud-detection")
+
+    md5 = "692357a2589a1a6fcd44f14b3e1f9d2c"
+    url = f"https://dagshub.com/{owner}/{repo}.s3/files/md5/{md5[:2]}/{md5[2:]}"
+
+    print(f"Downloading fraudTest.csv from DVC remote ({md5})...")
+    resp = requests.get(url, auth=(token, token), stream=True, timeout=600)
+    resp.raise_for_status()
+
+    with open(target, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=8192 * 1024):
+            f.write(chunk)
+
+    print(f"Downloaded fraudTest.csv ({target.stat().st_size} bytes)")
+
+
 if __name__ == "__main__":
     download_production_model()
