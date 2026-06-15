@@ -211,6 +211,19 @@ def run_training_pipeline():
             )
             _log_summary(metadata, eval_metrics)
             _save_metrics(metadata, eval_metrics)
+
+            logging.info("Step 5/5 — Auto-promote (metric gate)")
+            try:
+                from src.components.mlflow_promote import main as promote_main
+                old_argv = sys.argv
+                sys.argv = ["mlflow_promote", "--floor", "0.78"]
+                try:
+                    promote_main()
+                finally:
+                    sys.argv = old_argv
+            except Exception as e:
+                logging.warning(f"Auto-promote failed (model stays in Staging): {e}")
+
             return eval_metrics
 
         # ── Feast path: features already pre-computed ─────────────────────────
@@ -279,6 +292,19 @@ def run_training_pipeline():
         )
         _log_summary(metadata, eval_metrics)
         _save_metrics(metadata, eval_metrics)
+
+        logging.info("Step 5/5 — Auto-promote (metric gate)")
+        try:
+            from src.components.mlflow_promote import main as promote_main
+            old_argv = sys.argv
+            sys.argv = ["mlflow_promote", "--floor", "0.78"]
+            try:
+                promote_main()
+            finally:
+                sys.argv = old_argv
+        except Exception as e:
+            logging.warning(f"Auto-promote failed (model stays in Staging): {e}")
+
         return eval_metrics
 
     except Exception as e:
