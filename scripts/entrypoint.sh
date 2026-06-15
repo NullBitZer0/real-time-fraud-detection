@@ -5,9 +5,10 @@ python -c "from scripts.download_model import download_production_model; downloa
 
 # Pull test data from DVC if not present
 if [ ! -f "data/raw/fraudTest.csv" ] || [ ! -f "data/raw/fraudTrain.csv" ]; then
-  echo "Pulling fraudTest.csv from DVC..."
+  echo "Pulling data from DVC..."
   mkdir -p data/raw
   git init 2>/dev/null || true
+  git add data/raw/*.dvc .dvc/config 2>/dev/null || true
   # DVC S3 credentials = DAGSHUB_TOKEN
   TOKEN="${DAGSHUB_TOKEN:-}"
   if [ -n "$TOKEN" ]; then

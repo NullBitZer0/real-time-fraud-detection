@@ -170,10 +170,11 @@ services:
           --password viewer || true
 
         # Pull Sparkov data from DVC
-        if [ ! -f "/opt/airflow/project/data/raw/fraudTest.csv" ]; then
+        if [ ! -f "/opt/airflow/project/data/raw/fraudTest.csv" ] || [ ! -f "/opt/airflow/project/data/raw/fraudTrain.csv" ]; then
           echo "Pulling Sparkov data from DVC..."
           cd /opt/airflow/project
           git init 2>/dev/null || true
+          git add data/raw/*.dvc .dvc/config 2>/dev/null || true
           # Fix DVC permissions for airflow user
           mkdir -p .dvc/tmp logs
           chmod -R 777 .dvc logs
