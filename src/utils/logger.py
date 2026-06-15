@@ -21,9 +21,13 @@ import sys
 from datetime import datetime, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
-LOG_DIR  = "logs"
+LOG_DIR  = os.environ.get("LOG_DIR", "logs")
 LOG_FILE = f"{datetime.now().strftime('%m_%d_%Y_%H_%M_%S')}.log"
-os.makedirs(LOG_DIR, exist_ok=True)
+try:
+    os.makedirs(LOG_DIR, exist_ok=True)
+except PermissionError:
+    LOG_DIR = "/tmp/fraud_logs"
+    os.makedirs(LOG_DIR, exist_ok=True)
 
 # Set to "plain" to get the human-readable format (default = "json")
 LOG_FORMAT = os.environ.get("LOG_FORMAT", "json").lower()
