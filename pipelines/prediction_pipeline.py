@@ -15,7 +15,6 @@ Predictions are stored permanently in the Postgres audit log via
 api/app.py:insert_decision().
 """
 import json
-import os
 import sys
 from pathlib import Path
 

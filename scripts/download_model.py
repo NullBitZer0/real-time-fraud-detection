@@ -3,7 +3,6 @@
 Called at container startup when models/ is empty.
 """
 import os
-import sys
 from pathlib import Path
 
 import mlflow
@@ -44,8 +43,6 @@ def download_production_model(model_dir: str = "models") -> None:
 
     latest = max(prod_versions, key=lambda v: int(v.version))
     print(f"Found Production v{latest.version} (run_id={latest.run_id})")
-
-    run = client.get_run(latest.run_id)
 
     # Download artifacts
     for artifact_name in ["catboost.cbm", "metadata.json", "feature_engineering.pkl"]:
