@@ -33,6 +33,7 @@ COPY pipelines/  pipelines/
 COPY api/        api/
 COPY params.yaml params.yaml
 COPY models/     models/
+COPY scripts/    scripts/
 COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
 
 # React frontend (built in first stage)
@@ -43,4 +44,5 @@ EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -fsS http://localhost:8888/readyz | grep -q '"ready":true' || exit 1
 
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8888", "--workers", "1"]
+RUN chmod +x scripts/entrypoint.sh
+ENTRYPOINT ["scripts/entrypoint.sh"]

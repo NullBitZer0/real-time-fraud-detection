@@ -180,7 +180,7 @@ class ModelTrainer:
                     mlflow.catboost.log_model(
                         model,
                         name="catboost",
-                        registered_model_name=None,
+                        registered_model_name="FraudDetectionCatBoost",
                     )
                     _catboost_logged = True
                 except TypeError:
@@ -188,6 +188,7 @@ class ModelTrainer:
                     mlflow.catboost.log_model(
                         model,
                         artifact_path="catboost",
+                        registered_model_name="FraudDetectionCatBoost",
                     )
                     _catboost_logged = True
             except Exception as e:

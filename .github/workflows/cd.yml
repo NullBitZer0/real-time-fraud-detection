@@ -85,6 +85,48 @@ jobs:
               time.sleep(10 * attempt)
           "
 
+      - name: Smoke test model artifacts
+        if: env.DAGSHUB_TOKEN != ''
+        run: |
+          pip install catboost joblib pandas scikit-learn
+          python -c "
+          import os, json
+          from catboost import CatBoostClassifier
+          import joblib
+          import pandas as pd
+
+          model_dir = 'models'
+
+          # Verify all files exist
+          required = ['catboost.cbm', 'metadata.json', 'feature_engineering.pkl']
+          for f in required:
+            path = os.path.join(model_dir, f)
+            assert os.path.exists(path), f'Missing: {path}'
+            print(f'  OK: {path} ({os.path.getsize(path)} bytes)')
+
+          # Load model
+          model = CatBoostClassifier()
+          model.load_model(f'{model_dir}/catboost.cbm')
+
+          # Load metadata
+          with open(f'{model_dir}/metadata.json') as fp:
+            meta = json.load(fp)
+          features = meta['feature_list']
+          print(f'  Features: {len(features)}')
+          assert len(features) > 0, 'No features in metadata'
+
+          # Load feature engineering
+          fe = joblib.load(f'{model_dir}/feature_engineering.pkl')
+          print(f'  FeatureEngineering loaded: {type(fe).__name__}')
+
+          # Run dummy prediction
+          dummy = pd.DataFrame([{f: 0.0 for f in features}])
+          proba = model.predict_proba(dummy)
+          assert proba.shape == (1, 2), f'Unexpected shape: {proba.shape}'
+          print(f'  Dummy prediction: fraud={proba[0][1]:.4f}')
+          print('Model smoke test PASSED')
+          "
+
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4

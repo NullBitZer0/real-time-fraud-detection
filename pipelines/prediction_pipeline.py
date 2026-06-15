@@ -15,7 +15,9 @@ Predictions are stored permanently in the Postgres audit log via
 api/app.py:insert_decision().
 """
 import json
+import os
 import sys
+from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -40,6 +42,10 @@ class PredictionPipeline:
 
     def __init__(self, model_dir: str = "models", use_feast: bool = True):
 
+        model_file = Path(model_dir) / "catboost.cbm"
+        if not model_file.exists():
+            self._download_model(model_dir)
+
         # Load trained CatBoost model
         self.model = CatBoostClassifier()
         self.model.load_model(f"{model_dir}/catboost.cbm")
@@ -60,6 +66,18 @@ class PredictionPipeline:
             f"feast={'on' if use_feast else 'off'} | "
             f"tiers={self.tier_thresholds}"
         )
+
+    @staticmethod
+    def _download_model(model_dir: str) -> None:
+        """Download model artifacts from MLflow/DagsHub if not present locally."""
+        try:
+            from scripts.download_model import download_production_model
+            download_production_model(model_dir)
+        except Exception as e:
+            logging.error(f"Failed to download model from MLflow: {e}")
+            raise RuntimeError(
+                f"Model not found at {model_dir}/catboost.cbm and download failed: {e}"
+            )
 
     def _enrich_with_online_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fetch per-cc_num + per-merchant features from Redis (Feast)."""
