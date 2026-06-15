@@ -70,10 +70,26 @@ services:
       context: .
       dockerfile: Dockerfile
     image: fraud-api:local
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=PathPrefix(`/`)"
-      - "traefik.http.services.api.loadbalancer.server.port=8888"
+    ports:
+      - "8888:8888"
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      LOG_FORMAT: json
+      DAGSHUB_REPO_OWNER: ${DAGSHUB_REPO_OWNER:-}
+      DAGSHUB_REPO_NAME: ${DAGSHUB_REPO_NAME:-}
+      DAGSHUB_TOKEN: ${DAGSHUB_TOKEN:-}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+      POSTGRES_USER: ${POSTGRES_USER:-feast}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-feast}
+      POSTGRES_DB: ${POSTGRES_DB:-feast}
+      REDIS_PORT: "6379"
+      KAFKA_BROKER: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - app_models:/app/models
       - app_logs:/app/logs
