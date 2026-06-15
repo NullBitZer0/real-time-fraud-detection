@@ -3,10 +3,17 @@
 # Download model from MLflow/Dagshub if not present
 python -c "from scripts.download_model import download_production_model; download_production_model()" || echo "Model download failed, continuing..."
 
-# Pull test data if not present
+# Pull test data from DVC if not present
 if [ ! -f "data/raw/fraudTest.csv" ]; then
-  echo "Downloading fraudTest.csv..."
-  python -c "from scripts.download_model import download_test_data; download_test_data()" || echo "Data download failed, demo endpoint unavailable"
+  echo "Pulling fraudTest.csv from DVC..."
+  mkdir -p data/raw
+  # DVC requires a git repo
+  git init 2>/dev/null || true
+  if [ -n "$AWS_ACCESS_KEY_ID" ]; then
+    dvc remote modify origin access_key_id "$AWS_ACCESS_KEY_ID" 2>/dev/null || true
+    dvc remote modify origin secret_access_key "$AWS_SECRET_ACCESS_KEY" 2>/dev/null || true
+  fi
+  dvc pull data/raw/fraudTest.csv || echo "DVC pull failed, demo endpoint unavailable"
 fi
 
 # Start API

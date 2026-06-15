@@ -18,9 +18,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# System deps (psycopg2 + catboost + feasting build)
+# System deps (psycopg2 + catboost + feasting build + git for dvc)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev curl \
+    build-essential libpq-dev curl git \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps — split into a "requirements" layer for caching
@@ -35,6 +35,8 @@ COPY params.yaml params.yaml
 COPY models/     models/
 COPY scripts/    scripts/
 COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
+COPY .dvc/config .dvc/config
+COPY data/raw/fraudTest.csv.dvc data/raw/fraudTest.csv.dvc
 
 # React frontend (built in first stage)
 COPY --from=frontend-build /app/dist /app/static/dashboard
