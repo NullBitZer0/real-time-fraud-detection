@@ -173,7 +173,8 @@ services:
           echo "Pulling Sparkov data from DVC..."
           cd /opt/airflow/project
           git init 2>/dev/null || true
-          dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv || echo "DVC pull failed"
+          dvc remote modify origin endpointurl "https://dagshub.com/${DAGSHUB_REPO_OWNER:-NullBitZer0}/${DAGSHUB_REPO_NAME:-real-time-fraud-detection}.s3" 2>/dev/null || true
+          dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv || echo "DVC pull failed — drift report will be unavailable"
         fi
 
         echo "Airflow initialised"
