@@ -20,13 +20,6 @@ export default function MetricsBar({ metrics }) {
         </span>
         <span className="metric-sub">of all transactions</span>
       </div>
-      <div className="metric-card">
-        <span className="metric-label">Avg Latency</span>
-        <span className="metric-value success">
-          {metrics.avg_latency_ms?.toFixed(1) ?? '–'}ms
-        </span>
-        <span className="metric-sub">per inference</span>
-      </div>
     </div>
   )
 }

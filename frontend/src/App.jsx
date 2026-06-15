@@ -18,7 +18,7 @@ const TABS = [
 
 const EMPTY_METRICS = {
   total_transactions: 0, total_fraud: 0,
-  fraud_rate_pct: 0,    avg_latency_ms: 0, uptime_seconds: 0,
+  fraud_rate_pct: 0, uptime_seconds: 0,
 }
 
 export default function App() {
@@ -116,6 +116,11 @@ export default function App() {
             target="_blank" rel="noreferrer"
             style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none' }}
           >API Docs ↗</a>
+          <a
+            href="http://adlorxod3bwtdb13hm8qxb73.140.245.59.209.sslip.io/d/fraud-detection/real-time-fraud-detection?orgId=1&from=now-1h&to=now&timezone=browser&refresh=10s"
+            target="_blank" rel="noreferrer"
+            style={{ fontSize: '12px', color: 'var(--accent)', textDecoration: 'none' }}
+          >Grafana ↗</a>
         </div>
       </header>
 
