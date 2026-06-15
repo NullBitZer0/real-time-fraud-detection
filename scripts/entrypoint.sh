@@ -4,7 +4,7 @@
 python -c "from scripts.download_model import download_production_model; download_production_model()" || echo "Model download failed, continuing..."
 
 # Pull test data from DVC if not present
-if [ ! -f "data/raw/fraudTest.csv" ]; then
+if [ ! -f "data/raw/fraudTest.csv" ] || [ ! -f "data/raw/fraudTrain.csv" ]; then
   echo "Pulling fraudTest.csv from DVC..."
   mkdir -p data/raw
   git init 2>/dev/null || true
@@ -15,7 +15,7 @@ if [ ! -f "data/raw/fraudTest.csv" ]; then
     dvc remote modify origin secret_access_key "$TOKEN" 2>/dev/null || true
     dvc remote modify origin endpointurl "https://dagshub.com/${DAGSHUB_REPO_OWNER:-NullBitZer0}/${DAGSHUB_REPO_NAME:-real-time-fraud-detection}.s3" 2>/dev/null || true
   fi
-  dvc pull data/raw/fraudTest.csv || echo "DVC pull failed, demo endpoint unavailable"
+  dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv || echo "DVC pull failed, demo endpoint unavailable"
 fi
 
 # Start API
