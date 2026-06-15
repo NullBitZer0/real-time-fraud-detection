@@ -70,6 +70,16 @@ services:
       context: .
       dockerfile: Dockerfile
     image: fraud-api:local
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`xwa01s0zg35yi5gcke3p5f3x.140.245.59.209.sslip.io`)"
+      - "traefik.http.routers.api.entrypoints=https"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8888"
+    networks:
+      - default
+      - coolify
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
@@ -323,6 +333,10 @@ services:
       resources:
         limits:
           memory: 512M
+
+networks:
+  coolify:
+    external: true
 
 volumes:
   pgdata:
