@@ -93,6 +93,7 @@ services:
     volumes:
       - app_models:/app/models
       - app_logs:/app/logs
+      - metrics:/app/metrics
     restart: unless-stopped
     deploy:
       resources:
@@ -159,14 +160,14 @@ services:
           --firstname Admin \
           --lastname User \
           --role Admin \
-          --email admin@example.com \
+          --email admin@adeeshaperera.me \
           --password admin || true
         airflow users create \
           --username viewer \
           --firstname Portfolio \
           --lastname Viewer \
           --role Viewer \
-          --email viewer@example.com \
+          --email viewer@adeeshaperera.me \
           --password viewer || true
 
         # Pull Sparkov data from DVC
@@ -214,6 +215,7 @@ services:
       - .:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
+      - metrics:/opt/airflow/project/metrics
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -255,6 +257,7 @@ services:
       - .:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
+      - metrics:/opt/airflow/project/metrics
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -349,3 +352,4 @@ volumes:
   airflow_postgres:
   airflow_logs:
   airflow_plugins:
+  metrics:
