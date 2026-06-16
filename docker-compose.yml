@@ -146,6 +146,7 @@ services:
       - .:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
+      - metrics:/opt/airflow/project/metrics
     depends_on:
       airflow-postgres:
         condition: service_healthy
@@ -154,6 +155,7 @@ services:
       - -c
       - |
         set -e
+        chmod -R 777 /opt/airflow/project/metrics 2>/dev/null || true
         airflow db init
         airflow users create \
           --username admin \
