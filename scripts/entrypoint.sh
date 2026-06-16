@@ -16,7 +16,7 @@ if [ ! -f "data/raw/fraudTest.csv" ] || [ ! -f "data/raw/fraudTrain.csv" ]; then
     dvc remote modify origin secret_access_key "$TOKEN" 2>/dev/null || true
     dvc remote modify origin endpointurl "https://dagshub.com/${DAGSHUB_REPO_OWNER:-NullBitZer0}/${DAGSHUB_REPO_NAME:-real-time-fraud-detection}.s3" 2>/dev/null || true
   fi
-  dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv || echo "DVC pull failed, demo endpoint unavailable"
+  dvc pull data/raw/fraudTest.csv.dvc data/raw/fraudTrain.csv.dvc || echo "DVC pull failed, demo endpoint unavailable"
 fi
 
 # Start API

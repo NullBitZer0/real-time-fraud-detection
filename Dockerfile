@@ -37,6 +37,7 @@ COPY scripts/    scripts/
 COPY feast/feature_repo/feature_store.yaml feast/feature_repo/feature_store.yaml
 COPY .dvc/config .dvc/config
 COPY data/raw/fraudTest.csv.dvc data/raw/fraudTest.csv.dvc
+COPY data/raw/fraudTrain.csv.dvc data/raw/fraudTrain.csv.dvc
 
 # React frontend (built in first stage)
 COPY --from=frontend-build /app/dist /app/static/dashboard
