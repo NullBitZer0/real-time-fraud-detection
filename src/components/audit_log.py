@@ -27,7 +27,6 @@ import sys
 from contextlib import contextmanager
 
 import psycopg2
-from psycopg2.extras import execute_values
 
 from src.utils.exception import CustomException
 from src.utils.logger import logging
@@ -111,61 +110,3 @@ def insert_decision(*, trans_num: str, proba: float, tier: int, action: str,
     except Exception as e:
         # Don't fail /predict just because the audit log is down
         logging.warning(f"audit_log: insert_decision failed for {trans_num} ({e})")
-
-
-def insert_batch(rows: list[dict]) -> int:
-    """Bulk-insert a list of decision dicts. Returns the row count."""
-    if not rows:
-        return 0
-    try:
-        with _connect() as conn:
-            with conn.cursor() as cur:
-                execute_values(
-                    cur,
-                    """
-                    INSERT INTO fraud_detection.decision_log
-                        (trans_num, fraud_probability, tier, action, threshold_used,
-                         model_run_id, model_version, latency_ms)
-                    VALUES %s
-                    """,
-                    [(
-                        r["trans_num"], r["proba"], r["tier"], r["action"],
-                        r["threshold"], r.get("model_run_id"),
-                        r.get("model_version"), r.get("latency_ms"),
-                    ) for r in rows],
-                )
-        logging.info(f"audit_log: bulk-inserted {len(rows)} decisions")
-        return len(rows)
-    except Exception as e:
-        logging.warning(f"audit_log: insert_batch failed ({e})")
-        return 0
-
-
-def backfill_ground_truth() -> int:
-    """Match the decision_log against raw_transactions.is_fraud and backfill.
-
-    Useful after the 100-test demo: every demo row has a trans_num that
-    exists in raw_transactions, so we can backfill the is_fraud column
-    for offline analysis.
-    """
-    try:
-        with _connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE fraud_detection.decision_log d
-                    SET    is_fraud_ground_truth = r.is_fraud
-                    FROM   fraud_detection.raw_transactions r
-                    WHERE  d.trans_num = r.trans_num
-                      AND  d.is_fraud_ground_truth IS NULL
-                """)
-                n = cur.rowcount
-        logging.info(f"audit_log: backfilled ground truth for {n} rows")
-        return n
-    except Exception as e:
-        logging.warning(f"audit_log: backfill_ground_truth failed ({e})")
-        return 0
-
-
-if __name__ == "__main__":
-    ensure_table()
-    backfill_ground_truth()

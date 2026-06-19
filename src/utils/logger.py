@@ -99,10 +99,5 @@ logging.getLogger().info  # touch attribute
 _setup()
 
 
-# ── Convenience: named logger getter ──────────────────────────────────────────
-def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(name)
-
-
 # Backwards-compat shim: `from src.utils.logger import logging`
 logging = logging

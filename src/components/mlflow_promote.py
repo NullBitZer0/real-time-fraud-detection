@@ -28,6 +28,7 @@ try:
 except ImportError:
     pass
 
+from src.utils.config import init_dagshub
 from src.utils.exception import CustomException
 from src.utils.logger import logging
 
@@ -35,25 +36,6 @@ from src.utils.logger import logging
 DEFAULT_NAME = "FraudDetectionCatBoost"
 # Floor: refuse to promote a model with worse test PR-AUC than this
 DEFAULT_FLOOR = 0.78
-
-
-def _init_dagshub() -> None:
-    """Initialize the DAGsHub-backed MLflow tracking URI + auth."""
-    owner = os.environ.get("DAGSHUB_REPO_OWNER", "NullBitZer0")
-    repo  = os.environ.get("DAGSHUB_REPO_NAME",  "real-time-fraud-detection")
-    if "DAGSHUB_REPO_OWNER" not in os.environ:
-        os.environ["DAGSHUB_REPO_OWNER"] = owner
-    if "DAGSHUB_REPO_NAME" not in os.environ:
-        os.environ["DAGSHUB_REPO_NAME"]  = repo
-    token = os.environ.get("DAGSHUB_TOKEN")
-    if not token:
-        raise RuntimeError("DAGSHUB_TOKEN env var is required for promotion")
-    # Configure MLflow tracking URI + auth directly instead of using
-    # dagshub.init() which can trigger a fragile OAuth flow.
-    tracking_uri = f"https://dagshub.com/{owner}/{repo}.mlflow"
-    mlflow.set_tracking_uri(tracking_uri)
-    os.environ["MLFLOW_TRACKING_USERNAME"] = token
-    os.environ["MLFLOW_TRACKING_PASSWORD"] = token
 
 
 def get_production_metric(client, name: str) -> float | None:
@@ -120,7 +102,7 @@ def main() -> int:
                 f"not promoting to Production"
             )
 
-        _init_dagshub()
+        init_dagshub()
         client = mlflow.tracking.MlflowClient()
 
         # Get the current Production model (if any)

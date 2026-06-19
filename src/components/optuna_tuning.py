@@ -161,15 +161,6 @@ def run_optuna(X_train, y_train, X_val, y_val,
     return best_params
 
 
-def load_best_params(path: str = "models/optuna_best.json") -> dict | None:
-    """Load previously saved Optuna best params. Returns None if not found."""
-    if not os.path.exists(path):
-        return None
-    with open(path) as f:
-        data = json.load(f)
-    return data.get("best_params", data)
-
-
 def main():
     parser = argparse.ArgumentParser(description="Optuna tuning for CatBoost")
     parser.add_argument("--n-trials", type=int, default=50, help="Number of trials")
