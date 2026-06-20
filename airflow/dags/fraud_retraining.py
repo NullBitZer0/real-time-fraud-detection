@@ -19,27 +19,15 @@ daily drift-check DAG) can fire this DAG via the Airflow REST API:
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from airflow.decorators import dag, task, task_group
 from airflow.models import Variable
 from airflow.operators.python import get_current_context
 
-# ── Paths ────────────────────────────────────────────────────────────────────
-# The project root is mounted at /opt/airflow/project in the Docker image
-# (see airflow/Dockerfile). When running Airflow on the host, set
-# AIRFLOW__CORE__DAGS_FOLDER or use the env var PROJECT_ROOT.
-PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", "/opt/airflow/project"))
-METRICS_DIR  = PROJECT_ROOT / "metrics"
-DRIFT_JSON   = METRICS_DIR / "drift_report.json"
+from utils import METRICS_DIR, PROJECT_ROOT, read_drift_summary, run_cmd, slack_dag_callback, slack_post
 
 # ── Thresholds ───────────────────────────────────────────────────────────────
-# Number of features with statistical drift (KS test p < 0.05) that triggers
-# a retrain. Evidently's report covers ~32 features; >5 drifted features is
-# a real signal. Tweakable via Airflow Variable `drift_feature_threshold`.
 DRIFT_FEATURE_THRESHOLD = int(Variable.get(
     "drift_feature_threshold", default_var="5"
 ))
@@ -48,55 +36,15 @@ PROMOTION_FLOOR = float(Variable.get(
 ))
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-def _run(cmd: str, cwd: Path = PROJECT_ROOT) -> dict:
-    """Run a shell command, return dict with returncode/stdout/stderr."""
-    result = subprocess.run(
-        cmd, shell=True, cwd=str(cwd),
-        capture_output=True, text=True, timeout=1800,
-    )
-    return {
-        "cmd":     cmd,
-        "returncode": result.returncode,
-        "stdout":  result.stdout[-4000:],   # cap for XCom
-        "stderr":  result.stderr[-4000:],
-    }
-
-
-def _read_drift_summary() -> dict:
-    """Parse metrics/drift_report.json → {n_drifted_features, drift_share, ...}."""
-    if not DRIFT_JSON.exists():
-        return {"n_drifted_features": 999, "drift_share": 1.0, "available": False}
-    with open(DRIFT_JSON) as f:
-        report = json.load(f)
-    # Evidently 0.4 schema: metrics keyed by id
-    metrics = report.get("metrics", [])
-    drift_count = 0
-    drift_total = 0
-    for m in metrics:
-        metric_id = m.get("metric_id", "")
-        if "ValueDrift" in metric_id:
-            drift_total += 1
-            value = m.get("value", {})
-            if isinstance(value, dict) and value.get("drift_detected", False):
-                drift_count += 1
-    return {
-        "n_drifted_features": drift_count,
-        "n_total_features":   drift_total,
-        "drift_share":        drift_count / max(drift_total, 1),
-        "available":          True,
-    }
-
-
 # ── Tasks ────────────────────────────────────────────────────────────────────
 @task
 def generate_drift_report() -> dict:
     """Run src/components/drift_report.py → metrics/drift_report.{html,json}."""
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
-    result = _run("python -m src.components.drift_report")
+    result = run_cmd("python -m src.components.drift_report", timeout=1800)
     if result["returncode"] != 0:
         raise RuntimeError(f"drift_report failed:\n{result['stderr']}")
-    return _read_drift_summary()
+    return read_drift_summary(DRIFT_FEATURE_THRESHOLD)
 
 
 @task.branch
@@ -122,7 +70,7 @@ def retrain():
     @task
     def pull_data() -> dict:
         """Pull the latest Sparkov CSVs from DVC remote (DAGsHub S3)."""
-        result = _run(
+        result = run_cmd(
             "dvc pull data/raw/fraudTest.csv data/raw/fraudTrain.csv --force"
         )
         if result["returncode"] != 0:
@@ -135,7 +83,7 @@ def retrain():
     @task
     def seed_feast() -> dict:
         """Compute features, write to Postgres, apply Feast definitions."""
-        result = _run("python feast/seed.py --skip-materialize")
+        result = run_cmd("python feast/seed.py --skip-materialize")
         if result["returncode"] != 0:
             raise RuntimeError(f"feast seed failed:\n{result['stderr']}")
         return {"postgres_seeded": True}
@@ -143,7 +91,7 @@ def retrain():
     @task
     def train_model() -> dict:
         """Run pipelines.training_pipeline (reads from Feast/Postgres) → MLflow."""
-        result = _run("python -m pipelines.training_pipeline")
+        result = run_cmd("python -m pipelines.training_pipeline")
         if result["returncode"] != 0:
             raise RuntimeError(f"training failed:\n{result['stderr']}")
         metrics_file = METRICS_DIR / "train_metrics.json"
@@ -169,7 +117,7 @@ def retrain():
     def promote(metrics: dict) -> dict:
         """Promote the new model in MLflow registry (gated by comparison to
         current Production)."""
-        result = _run(
+        result = run_cmd(
             f"python -m src.components.mlflow_promote --floor {PROMOTION_FLOOR}"
         )
         if result["returncode"] != 0:
@@ -179,7 +127,7 @@ def retrain():
     @task
     def materialize_online() -> dict:
         """Materialize Postgres → Redis with the latest feature data."""
-        result = _run(
+        result = run_cmd(
             "python -c \"from datetime import datetime; "
             "from feast import FeatureStore; "
             "s = FeatureStore(repo_path='feast/feature_repo'); "
@@ -210,18 +158,35 @@ def skip() -> dict:
 
 @task
 def notify(drift_summary: dict, retrain_result: dict | None = None) -> dict:
-    """Log a final summary. In production, wire this to Slack/email/PagerDuty."""
+    """Log a final summary and post to Slack."""
     ctx = get_current_context()
     triggered_by = ctx.get("dag_run").conf.get("trigger_source", "schedule")
+    retrain_info = retrain_result or {"retrained": False}
     summary = {
         "ts":              datetime.utcnow().isoformat() + "Z",
         "dag_run_id":      ctx.get("run_id"),
         "triggered_by":    triggered_by,
         "drift_summary":   drift_summary,
-        "retrain_result":  retrain_result or {"retrained": False},
+        "retrain_result":  retrain_info,
     }
-    # In a real system: requests.post(SLACK_WEBHOOK, json=summary)
     print(f"📢 Final summary: {json.dumps(summary, indent=2)}")
+
+    drifted = drift_summary.get("n_drifted_features", 0)
+    total = drift_summary.get("n_total_features", 0)
+    retrained = retrain_info.get("retrained", False)
+    model_pr = retrain_info.get("new_pr_auc") or retrain_info.get("pr_auc")
+
+    lines = [
+        f"*Fraud Retrain DAG* — `{ctx.get('run_id')}`",
+        f"Triggered by: {triggered_by}",
+        f"Drift: {drifted}/{total} features",
+        f"Retrained: {'Yes' if retrained else 'No'}",
+    ]
+    if model_pr:
+        lines.append(f"New PR-AUC: {model_pr:.4f}")
+
+    color = "success" if retrained else "running"
+    slack_post("\n".join(lines), color=color)
     return summary
 
 
@@ -243,6 +208,8 @@ def notify(drift_summary: dict, retrain_result: dict | None = None) -> dict:
         "retries":          1,
         "retry_delay":      timedelta(minutes=5),
         "execution_timeout": timedelta(hours=2),
+        "on_failure_callback": slack_dag_callback,
+        "on_success_callback": slack_dag_callback,
     },
     tags=["fraud", "ml", "retraining", "production"],
 )

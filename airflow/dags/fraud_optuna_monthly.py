@@ -13,29 +13,16 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from airflow.decorators import dag, task
 from airflow.models import Variable
 
-PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", "/opt/airflow/project"))
+from utils import PROJECT_ROOT, run_cmd, slack_dag_callback
+
 OPTUNA_ENABLED = os.environ.get("OPTUNA_ENABLED", "").lower() in ("1", "true", "") or \
                  Variable.get("optuna_enabled", default_var="true").lower() == "true"
 N_TRIALS = int(Variable.get("optuna_n_trials", default_var="50"))
-
-
-def _run(cmd: str, cwd: Path = PROJECT_ROOT) -> dict:
-    result = subprocess.run(
-        cmd, shell=True, cwd=str(cwd),
-        capture_output=True, text=True, timeout=7200,
-    )
-    return {
-        "returncode": result.returncode,
-        "stdout":     result.stdout[-4000:],
-        "stderr":     result.stderr[-4000:],
-    }
 
 
 @dag(
@@ -51,6 +38,8 @@ def _run(cmd: str, cwd: Path = PROJECT_ROOT) -> dict:
         "retries":          1,
         "retry_delay":      timedelta(minutes=5),
         "execution_timeout": timedelta(hours=4),
+        "on_failure_callback": slack_dag_callback,
+        "on_success_callback": slack_dag_callback,
     },
     tags=["fraud", "ml", "optuna", "tuning", "production"],
 )
@@ -63,9 +52,10 @@ def fraud_optuna_monthly_dag():
             return {"status": "skipped", "reason": "disabled"}
 
         print(f"Starting Optuna search — {N_TRIALS} trials")
-        result = _run(
+        result = run_cmd(
             f"python -m src.components.optuna_tuning "
-            f"--n-trials {N_TRIALS} --mlflow"
+            f"--n-trials {N_TRIALS} --mlflow",
+            timeout=7200,
         )
         if result["returncode"] != 0:
             raise RuntimeError(f"Optuna search failed:\n{result['stderr']}")
