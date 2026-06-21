@@ -31,13 +31,10 @@ FEAST_REPO = os.environ.get(
     os.path.join(os.path.dirname(__file__), "feature_repo"),
 )
 
-PG_CONFIG = {
-    "host": os.environ.get("POSTGRES_HOST", "localhost"),
-    "port": int(os.environ.get("POSTGRES_PORT", 5432)),
-    "user": os.environ.get("POSTGRES_USER", "feast"),
-    "password": os.environ.get("POSTGRES_PASSWORD", "feast"),
-    "dbname": os.environ.get("POSTGRES_DB", "feast"),
-}
+
+def _pg_config():
+    from src.utils.config import PG_CONFIG
+    return PG_CONFIG
 
 # Column groups matching the three feature views
 CC_NUM_COLS = [
@@ -68,7 +65,7 @@ def _read_csv(path: str) -> pd.DataFrame:
 
 
 def _pg_conn():
-    return psycopg2.connect(**PG_CONFIG)
+    return psycopg2.connect(**_pg_config())
 
 
 def _create_tables(conn):
