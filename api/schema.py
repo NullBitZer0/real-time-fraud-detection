@@ -2,9 +2,9 @@
 
 Two request shapes are supported:
   - TransactionRequest : single Sparkov transaction → /predict
-  - Run100TestsRequest : no body, just trigger the 100-test demo run
+  - RunDemoRequest     : real_world / custom mode → /demo/run-tests
 
-Two response shapes for /predict and /demo/run-100-tests.
+Two response shapes for /predict and /demo/run-tests.
 """
 from datetime import datetime
 from typing import List, Optional
@@ -59,12 +59,23 @@ class FraudResponse(BaseModel):
     latency_ms:        float
 
 
-# ── 100-test demo run ─────────────────────────────────────────────────────────
-class Run100TestsRequest(BaseModel):
-    """Body for POST /demo/run-100-tests — controls sample size and result detail."""
-    n_fraud:         int  = Field(50, ge=0, le=1000, description="How many fraud rows to include (0-1000)")
-    n_legit:         int  = Field(50, ge=0, le=1000, description="How many legit rows to include (0-1000)")
-    include_results: bool = Field(True, description="Return individual result rows (summary-only when False)")
+# ── Demo run ──────────────────────────────────────────────────────────────────
+class RunDemoRequest(BaseModel):
+    """Body for POST /demo/run-tests — controls sampling mode and size.
+
+    Modes:
+      - real_world: samples n_total rows using the dataset's actual fraud rate
+      - custom:     samples exactly n_fraud + n_legit rows as specified
+    """
+    mode:             str  = Field("real_world", pattern="^(real_world|custom)$",
+                                   description="real_world = dataset fraud rate, custom = manual n_fraud/n_legit")
+    n_total:          int  = Field(100, ge=2, le=5000,
+                                   description="Total rows to sample (real_world mode)")
+    n_fraud:          int  = Field(1, ge=0, le=5000,
+                                   description="Fraud rows to include (custom mode)")
+    n_legit:          int  = Field(99, ge=0, le=5000,
+                                   description="Legit rows to include (custom mode)")
+    include_results:  bool = Field(True, description="Return individual result rows (summary-only when False)")
 
 
 class SingleTestResult(BaseModel):
@@ -79,7 +90,9 @@ class SingleTestResult(BaseModel):
     category:          str
 
 
-class Run100TestsResponse(BaseModel):
+class RunDemoResponse(BaseModel):
+    mode:         str
+    fraud_rate:   float
     n_total:    int
     n_fraud:    int
     n_legit:    int

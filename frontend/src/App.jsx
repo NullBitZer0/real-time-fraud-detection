@@ -29,6 +29,8 @@ export default function App() {
   const [wsStatus,   setWsStatus]   = useState('disconnected')
   const [demoResult, setDemoResult] = useState(null)
   const [demoBusy,   setDemoBusy]   = useState(false)
+  const [demoMode,   setDemoMode]   = useState('real_world')
+  const [demoTotal,  setDemoTotal]  = useState(100)
   const wsRef   = useRef(null)
   const tickRef = useRef(0)
 
@@ -68,14 +70,20 @@ export default function App() {
   }, [])
   useEffect(() => { connect() }, [connect])
 
-  const runDemo = async (n) => {
+  const runDemo = async () => {
     setDemoBusy(true)
     try {
-      const half = n / 2
-      const r = await fetch(`${API}/demo/run-100-tests`, {
+      const body = { mode: demoMode, include_results: demoTotal <= 200 }
+      if (demoMode === 'real_world') {
+        body.n_total = demoTotal
+      } else {
+        body.n_fraud = Math.round(demoTotal * 0.01) || 1
+        body.n_legit = demoTotal - body.n_fraud
+      }
+      const r = await fetch(`${API}/demo/run-tests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ n_fraud: half, n_legit: half, include_results: n <= 100 }),
+        body: JSON.stringify(body),
       })
       if (r.ok) {
         setDemoResult(await r.json())
@@ -92,20 +100,35 @@ export default function App() {
     <div className="dashboard">
       <header className="header">
         <h1>🔍 <span>Fraud</span> Detection Dashboard</h1>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <select
+            className="demo-mode-select"
+            value={demoMode}
+            onChange={e => setDemoMode(e.target.value)}
+          >
+            <option value="real_world">🌍 Real World (~0.5% fraud)</option>
+            <option value="custom">⚖️ Custom Ratio</option>
+          </select>
+          {demoMode === 'real_world' ? (
+            <select
+              className="demo-total-select"
+              value={demoTotal}
+              onChange={e => setDemoTotal(Number(e.target.value))}
+            >
+              <option value={100}>100</option>
+              <option value={500}>500</option>
+              <option value={1000}>1,000</option>
+              <option value={5000}>5,000</option>
+            </select>
+          ) : (
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>100 split</span>
+          )}
           <button
             className="run-demo-btn"
-            onClick={() => runDemo(100)}
+            onClick={runDemo}
             disabled={demoBusy}
           >
-            {demoBusy ? '⏳ Running…' : '▶ Run 100'}
-          </button>
-          <button
-            className="run-demo-btn large"
-            onClick={() => runDemo(1000)}
-            disabled={demoBusy}
-          >
-            {demoBusy ? '⏳ Running…' : '▶ Run 1000'}
+            {demoBusy ? '⏳ Running…' : `▶ Run ${demoMode === 'real_world' ? demoTotal.toLocaleString() : '100'}`}
           </button>
           <div className="live-badge">
             <div className="live-dot" />
@@ -150,12 +173,10 @@ export default function App() {
                 <div className="card">
                   <span className="card-title">🧪 Demo Results</span>
                   <p className="monitoring-hint">
-                    Click <strong>▶ Run 100</strong> or <strong>▶ Run 1000</strong>
-                    in the header to run the demo. The 1000-test run shows
-                    summary only (top-100 detail table hidden).
-                    It samples evenly from
-                    <code>data/raw/fraudTest.csv</code>, scores them, and
-                    populates this tab.
+                    Select a <strong>mode</strong> and click <strong>▶ Run</strong> in the header.
+                    <strong>Real World</strong> mode uses the dataset's actual fraud rate (~0.5%).
+                    <strong>Custom</strong> mode splits 50/50.
+                    Results populate this tab with confusion matrix, tier breakdown, and detail table.
                   </p>
                 </div>
               )
