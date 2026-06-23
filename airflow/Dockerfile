@@ -41,9 +41,13 @@ RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir \
         apache-airflow==2.10.4 \
         apache-airflow-providers-postgres==5.13.0 \
+        apache-airflow-providers-celery==3.11.0 \
+        celery[redis] \
+        flower \
         mlflow==3.11.1 \
         dagshub==0.7.0 \
         catboost \
+        lightgbm \
         "feast[postgres,redis]" \
         psycopg2-binary \
         redis \
