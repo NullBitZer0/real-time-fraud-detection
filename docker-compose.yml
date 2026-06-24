@@ -120,7 +120,9 @@ services:
           memory: 128M
 
   airflow-init:
-    image: airflow-celery:latest
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
     user: root
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -179,7 +181,9 @@ services:
           memory: 512M
 
   airflow-webserver:
-    image: airflow-celery:latest
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
@@ -221,7 +225,9 @@ services:
           memory: 2G
 
   airflow-scheduler:
-    image: airflow-celery:latest
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
@@ -263,7 +269,9 @@ services:
           memory: 2G
 
   airflow-worker:
-    image: airflow-celery:latest
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
     environment:
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
