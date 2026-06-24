@@ -242,13 +242,3 @@ class ModelTrainer:
                 "tp": tp, "fp": fp, "fn": fn, "tn": tn,
             }
         return summary
-
-    def classify_tier(self, proba):
-        """Map a single probability to a 3-tier action."""
-        if proba >= TIER_THRESHOLDS["tier1_auto_block"]:
-            return {"tier": 1, "action": "auto_block",    "threshold": TIER_THRESHOLDS["tier1_auto_block"]}
-        if proba >= TIER_THRESHOLDS["tier2_review_queue"]:
-            return {"tier": 2, "action": "review_queue",  "threshold": TIER_THRESHOLDS["tier2_review_queue"]}
-        if proba >= TIER_THRESHOLDS["tier3_soft_signal"]:
-            return {"tier": 3, "action": "soft_signal",   "threshold": TIER_THRESHOLDS["tier3_soft_signal"]}
-        return     {"tier": 0, "action": "approve",       "threshold": 0.0}

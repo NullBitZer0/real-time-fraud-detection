@@ -99,11 +99,6 @@ class PredictionPipeline:
                 df[c] = 0.0
             return df
 
-    def get_cached_decision(self, trans_num: str) -> dict:
-        """Legacy method — decision cache was removed.
-        Returns None; predictions are stored permanently in Postgres audit log."""
-        return None
-
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
         """Predict fraud probability + 3-tier action for each row.
 
@@ -168,7 +163,3 @@ if __name__ == "__main__":
     pipe = PredictionPipeline()
     out = pipe.predict(df)
     print(out[["trans_num", "proba", "tier", "action"]].to_string())
-    # Legacy cache check (always None now — predictions are in Postgres audit log)
-    for tn in out["trans_num"].head(3):
-        cached = pipe.get_cached_decision(tn)
-        print(f"  cached {tn[:8]}… → {cached}")

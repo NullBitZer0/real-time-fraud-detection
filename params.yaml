@@ -42,10 +42,6 @@ optuna:
   n_trials:          20
   timeout_minutes:   0            # 0 = no timeout (rely on n_trials)
 
-inference:
-  # Decision cache disabled — predictions go straight to Postgres audit log
-  decision_cache_ttl_seconds: 0
-
 artifacts:
   model_dir:        models
   model_path:       models/catboost.cbm

@@ -24,6 +24,7 @@ from src.components.feature_engineering import FeatureEngineering
 from src.components.mlflow_tracking import MLflowTracker
 from src.components.model_evaluation import evaluate_model
 from src.components.model_training import ModelTrainer, build_catboost_params
+from src.utils.config import PG_CONFIG
 from src.utils.exception import CustomException
 from src.utils.logger import logging
 
@@ -31,15 +32,8 @@ FEAST_REPO_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "feast", "feature_repo"
 ))
 
-PG_CONFIG = {
-    "host":     os.environ.get("POSTGRES_HOST", "localhost"),
-    "port":     int(os.environ.get("POSTGRES_PORT", 5432)),
-    "user":     os.environ.get("POSTGRES_USER", "feast"),
-    "password": os.environ.get("POSTGRES_PASSWORD", "feast"),
-    "dbname":   os.environ.get("POSTGRES_DB", "feast"),
-}
-
-# All 34 model features (matches FeatureEngineering.feature_list)
+# FEATURE_COLS is defined by FeatureEngineering.feature_list at runtime.
+# We keep a static list as a fallback for the Feast path where FE is not fitted.
 FEATURE_COLS = [
     "hour", "dow", "month", "is_night", "age", "amt_log", "amt_is_round", "distance_km",
     "cc_num_FE", "merchant_FE", "category_FE", "city_FE", "state_FE", "job_FE", "zip_FE",

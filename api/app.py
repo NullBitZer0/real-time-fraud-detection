@@ -3,7 +3,7 @@
 Endpoints:
     GET  /health                       — model status
     POST /predict                      — single Sparkov transaction → {proba, tier, action}
-    POST /demo/run-100-tests           — sample 50 fraud + 50 legit from fraudTest, score all
+    POST /demo/run-tests               — sample transactions from fraudTest, score all
     GET  /demo/decision/{trans_num}    — pull a single decision from the Redis decision cache
     GET  /metrics                      — running totals + avg latency
     WS   /ws                           — push live predictions to React dashboard
@@ -28,8 +28,8 @@ from api.schema import (
     FraudResponse,
     HealthResponse,
     MetricsResponse,
-    Run100TestsRequest,
-    Run100TestsResponse,
+    RunDemoRequest,
+    RunDemoResponse,
     SingleTestResult,
     TransactionRequest,
 )
@@ -71,18 +71,39 @@ class ConnectionManager:
             self.disconnect(ws)
 
 
-# ── Sample loader for the 100-test demo ───────────────────────────────────────
-def sample_100(n_fraud: int = 50, n_legit: int = 50, seed: int = 42) -> pd.DataFrame:
-    """Pull n_fraud + n_legit rows from fraudTest.csv, sorted by time."""
+# ── Sample loader for the demo ────────────────────────────────────────────────
+def sample_demo(mode: str = "real_world", n_total: int = 100,
+                n_fraud: int = 1, n_legit: int = 99,
+                seed: int = 42) -> tuple[pd.DataFrame, float]:
+    """Sample from fraudTest.csv.
+
+    real_world mode: uses the dataset's actual fraud rate to fill n_total rows.
+    custom mode:     takes exactly n_fraud + n_legit rows.
+
+    Returns (sample_df, dataset_fraud_rate).
+    """
     path = "data/raw/fraudTest.csv"
     if not os.path.exists(path):
         raise FileNotFoundError(f"{path} not found — Sparkov dataset is required for the demo")
 
     df = read_sparkov_split(path)
-    fraud = df[df.is_fraud == 1].sample(n=min(n_fraud, (df.is_fraud == 1).sum()), random_state=seed)
-    legit = df[df.is_fraud == 0].sample(n=min(n_legit, (df.is_fraud == 0).sum()), random_state=seed)
+    n_fraud_total = int((df.is_fraud == 1).sum())
+    n_legit_total = int((df.is_fraud == 0).sum())
+    dataset_fraud_rate = n_fraud_total / len(df)
+
+    if mode == "real_world":
+        actual_fraud = max(1, round(n_total * dataset_fraud_rate))
+        actual_legit = n_total - actual_fraud
+        actual_fraud = min(actual_fraud, n_fraud_total)
+        actual_legit = min(actual_legit, n_legit_total)
+    else:
+        actual_fraud = min(n_fraud, n_fraud_total)
+        actual_legit = min(n_legit, n_legit_total)
+
+    fraud = df[df.is_fraud == 1].sample(n=actual_fraud, random_state=seed)
+    legit = df[df.is_fraud == 0].sample(n=actual_legit, random_state=seed)
     sample = pd.concat([fraud, legit]).sort_values("trans_date_trans_time").reset_index(drop=True)
-    return sample
+    return sample, dataset_fraud_rate
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -166,7 +187,6 @@ async def readyz(request: Request):
 
     # 3. Postgres (audit log)
     try:
-        import psycopg2
         conn = psycopg2.connect(
             host=os.environ.get("POSTGRES_HOST", "localhost"),
             port=int(os.environ.get("POSTGRES_PORT", 5432)),
@@ -270,21 +290,27 @@ async def predict(transaction: TransactionRequest, request: Request):
     return response
 
 
-# ── /demo/run-100-tests ──────────────────────────────────────────────────────
-@app.post("/demo/run-100-tests",
-          response_model=Run100TestsResponse,
+# ── /demo/run-tests ───────────────────────────────────────────────────────────
+@app.post("/demo/run-tests",
+          response_model=RunDemoResponse,
           tags=["Demo"])
-async def run_100_tests(req: Run100TestsRequest, request: Request):
-    """Run a 100-transaction demo: n_fraud fraud + n_legit legit from fraudTest.
+async def run_demo_tests(req: RunDemoRequest, request: Request):
+    """Run a demo: sample transactions from fraudTest, score all.
 
-    Returns individual results + 3-tier summary + confusion matrix
-    (vs ground-truth `is_fraud` from fraudTest.csv).
+    Modes:
+      - real_world: uses the dataset's actual fraud rate (~0.5%)
+      - custom:     manually specify n_fraud + n_legit
+
+    Returns individual results + tier summary + confusion matrix.
     """
     pipeline = request.app.state.pipeline
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    sample  = sample_100(n_fraud=req.n_fraud, n_legit=req.n_legit)
+    sample, fraud_rate = sample_demo(
+        mode=req.mode, n_total=req.n_total,
+        n_fraud=req.n_fraud, n_legit=req.n_legit,
+    )
     t0      = time.perf_counter()
     out     = pipeline.predict(sample)
     batch_latency = (time.perf_counter() - t0) * 1000
@@ -350,7 +376,9 @@ async def run_100_tests(req: Run100TestsRequest, request: Request):
     cm  = confusion_matrix(y_true, y_pred).tolist()
     f1m = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
 
-    return Run100TestsResponse(
+    return RunDemoResponse(
+        mode          = req.mode,
+        fraud_rate    = fraud_rate,
         n_total      = len(out),
         n_fraud      = int(y_true.sum()),
         n_legit      = int((y_true == 0).sum()),

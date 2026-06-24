@@ -14,6 +14,7 @@ Usage:
         tracker.log_model(catboost_model, "catboost")
 """
 import os
+import re
 
 import mlflow
 
@@ -35,7 +36,6 @@ class MLflowTracker:
         uri = self.cfg.get("tracking_uri", "")
         # Resolve ${oc.env:VAR} placeholders manually (Hydra already does this,
         # but the tracker may be called outside a Hydra context)
-        import re
         for m in re.findall(r"\$\{oc\.env:([A-Z_]+)\}", uri):
             val = os.environ.get(m, "")
             if val:

@@ -5,15 +5,26 @@ const TIER_LABELS = {
   3: { name: 'Soft Signal',   color: '#eab308' },
 }
 
+const MODE_LABELS = {
+  real_world: { icon: '🌍', name: 'Real World', sub: 'dataset fraud rate' },
+  custom:     { icon: '⚖️', name: 'Custom',     sub: 'manual ratio' },
+}
+
 export default function DemoResults({ result }) {
   if (!result) return null
 
   const [[tn, fp], [fn, tp]] = result.confusion_matrix
   const hasDetail = result.results && result.results.length > 0
+  const modeInfo = MODE_LABELS[result.mode] ?? MODE_LABELS.real_world
 
   return (
     <div className="card demo-results">
-      <span className="card-title">🧪 Demo Run Results — {result.n_total} Tests</span>
+      <span className="card-title">
+        🧪 Demo Results — {result.n_total} Tests
+        <span className="demo-mode-badge">
+          {modeInfo.icon} {modeInfo.name} ({(result.fraud_rate * 100).toFixed(2)}% fraud)
+        </span>
+      </span>
 
       <div className="demo-summary">
         <div className="demo-stat">

@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python deps — split into a "requirements" layer for caching
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install --retries 10 --timeout 300 -r requirements.txt
 
 # App code
 COPY src/        src/

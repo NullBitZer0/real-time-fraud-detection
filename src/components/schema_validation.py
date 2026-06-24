@@ -14,7 +14,6 @@ Two schemas:
 """
 import sys
 
-import joblib
 import pandas as pd
 import pandera.pandas as pa
 from pandera import Field
@@ -145,6 +144,8 @@ def validate_model_input(df: pd.DataFrame, *, strict: bool = False) -> pd.DataFr
 
 if __name__ == "__main__":
     # Smoke test
+    import joblib
+
     from src.components.data_ingestion import read_sparkov_split
     sample = read_sparkov_split("data/raw/fraudTest.csv").head(3)
     print("Validating raw transactions…")

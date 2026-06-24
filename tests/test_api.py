@@ -83,15 +83,15 @@ def main():
             results["failed"] += 1
             fail_messages.append(f"/demo/decision status={r.status_code}")
 
-        # ── /demo/run-100-tests ────────────────────────────────────────────────
+        # ── /demo/run-tests (custom mode) ────────────────────────────────────────
         t0 = time.perf_counter()
-        r = client.post("/demo/run-100-tests", json={"n_fraud": 50, "n_legit": 50})
+        r = client.post("/demo/run-tests", json={"mode": "custom", "n_fraud": 50, "n_legit": 50})
         dt = time.perf_counter() - t0
         if r.status_code == 200:
             body = r.json()
             cm = body["confusion_matrix"]
-            print(f"  /demo/run-100  → {r.status_code}  total={body['n_total']}  "
-                  f"macroF1={body['macro_f1']:.4f}  CM={cm}  ({dt:.1f}s)")
+            print(f"  /demo/run-tests (custom) → {r.status_code}  total={body['n_total']}  "
+                  f"fraud_rate={body['fraud_rate']:.4f}  macroF1={body['macro_f1']:.4f}  CM={cm}  ({dt:.1f}s)")
             if body["n_total"] != 100:
                 results["failed"] += 1
                 fail_messages.append(f"n_total != 100 (got {body['n_total']})")
@@ -102,7 +102,20 @@ def main():
                 results["passed"] += 1
         else:
             results["failed"] += 1
-            fail_messages.append(f"/demo/run-100-tests status={r.status_code} body={r.text[:200]}")
+            fail_messages.append(f"/demo/run-tests (custom) status={r.status_code} body={r.text[:200]}")
+
+        # ── /demo/run-tests (real_world mode) ──────────────────────────────────
+        t0 = time.perf_counter()
+        r = client.post("/demo/run-tests", json={"mode": "real_world", "n_total": 100})
+        dt = time.perf_counter() - t0
+        if r.status_code == 200:
+            body = r.json()
+            print(f"  /demo/run-tests (real_world) → {r.status_code}  total={body['n_total']}  "
+                  f"fraud={body['n_fraud']}  legit={body['n_legit']}  fraud_rate={body['fraud_rate']:.4f}  ({dt:.1f}s)")
+            results["passed"] += 1
+        else:
+            results["failed"] += 1
+            fail_messages.append(f"/demo/run-tests (real_world) status={r.status_code} body={r.text[:200]}")
 
         # ── /metrics ───────────────────────────────────────────────────────────
         r = client.get("/metrics")
