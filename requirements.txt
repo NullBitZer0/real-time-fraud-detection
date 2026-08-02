@@ -4,11 +4,11 @@ scikit-learn
 catboost
 lightgbm
 optuna
-mlflow==3.11.1
+mlflow==3.14.0
 dvc
 dagshub==0.7.0
-pandera==0.31.1
-prometheus-client==0.24.1
+pandera==0.32.1
+prometheus-client==0.26.0
 python-dotenv>=1.0.0
 fastapi
 uvicorn
